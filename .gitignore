@@ -1,0 +1,152 @@
+# ============================================================
+# SECRETS / CREDENTIALS — NEVER COMMIT
+# ============================================================
+.env
+.env.*
+!.env.example
+*.env
+
+# API keys / credentials
+*credentials*
+*secrets*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Local auth/token files
+tokens/
+credentials/
+secrets/
+.auth/
+.auth.json
+token.json
+credentials.json
+
+
+# ============================================================
+# PYTHON
+# ============================================================
+.venv/
+venv/
+env/
+ENV/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+.coverage
+.coverage.*
+htmlcov/
+
+*.egg-info/
+.eggs/
+build/
+dist/
+
+
+# ============================================================
+# DATABASES / LOCAL DATA
+# ============================================================
+*.db
+*.sqlite
+*.sqlite3
+
+data/
+storage/
+uploads/
+downloads/
+
+
+# ============================================================
+# AI / RAG / VECTOR DATA
+# ============================================================
+vectorstore/
+vector_store/
+faiss_index/
+chroma/
+.chroma/
+embeddings/
+models/
+checkpoints/
+
+*.faiss
+*.index
+*.bin
+
+
+# ============================================================
+# AGENT MEMORY / RUNTIME STATE
+# ============================================================
+memory/
+runtime/
+state/
+sessions/
+cache/
+.cache/
+
+logs/
+*.log
+
+
+# ============================================================
+# IDE / EDITORS
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Antigravity/local IDE data
+.antigravity/
+
+
+# ============================================================
+# OS FILES
+# ============================================================
+.DS_Store
+Thumbs.db
+
+
+# ============================================================
+# TEMP FILES
+# ============================================================
+tmp/
+temp/
+*.tmp
+*.bak
+
+
+# ============================================================
+# TEST / COVERAGE ARTIFACTS
+# ============================================================
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+
+# ============================================================
+# NODE / FRONTEND — for future frontend
+# ============================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.next/
+dist/
+build/
+
+.local
