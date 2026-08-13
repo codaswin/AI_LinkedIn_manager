@@ -1,7 +1,7 @@
 """Token budget primitives, generic across model tiers.
 
 This module owns budgeting *logic* only — it never hardcodes a specific
-model's context window (CLAUDE.md forbids hardcoded model names/config
+model's context window (the project rules forbid hardcoded model names/config
 outside `llmops/model_router.py`). llmops-agent's model_router is expected
 to call `register_tier_budget()` once per tier it routes to (e.g. "primary"
 for the hosted Claude tier, "worker" for the self-hosted Hermes tier) with
@@ -77,7 +77,7 @@ class TokenBudget:
     def force_reserve(self, label: str, text: str) -> None:
         """Reserve space unconditionally, even past `remaining()`.
 
-        Reserved for the tiers CLAUDE.md says must never be compacted or
+        Reserved for the tiers the project rules say must never be compacted or
         dropped (system prompt, safety rules). If they alone exceed the
         budget, that is a config/escalation problem upstream — this method
         will not paper over it by truncating them; `remaining()` simply

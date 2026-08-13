@@ -1,4 +1,4 @@
-"""Context assembly + token budgeting (CLAUDE.md non-negotiable rule #4).
+"""Context assembly + token budgeting (project rules non-negotiable rule #4).
 
 Context is always assembled within a hard per-tier token budget; when it
 would overflow, the lowest-priority components are compacted (never

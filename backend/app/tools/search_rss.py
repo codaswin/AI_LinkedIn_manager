@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 logger = structlog.get_logger(__name__)
 
-# Starter set so RSS works with zero configuration (PRP: "Use these feeds
+# Starter set so RSS works with zero configuration (product spec: "Use these feeds
 # initially"). Override entirely via the RSS_FEEDS env var — never edit this
 # list to add a feed for one deployment; that's what the env var is for.
 DEFAULT_RSS_FEEDS: list[str] = [

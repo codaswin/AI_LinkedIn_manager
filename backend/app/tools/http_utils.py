@@ -4,7 +4,7 @@ Every research-source tool (search_hackernews, search_reddit, search_web,
 search_github, search_producthunt, search_rss) talks to an external HTTP
 API. Rather than each tool hand-rolling its own retry/backoff/timeout/cache
 logic, they all share this module — one place to get reliability behavior
-right (PRP "Reliability" requirements: timeouts, retries with backoff,
+right (product spec "Reliability" requirements: timeouts, retries with backoff,
 graceful failures, caching) instead of six slightly-different copies.
 
 Deliberately dependency-free (no tenacity/cachetools): the retry and cache

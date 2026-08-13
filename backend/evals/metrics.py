@@ -1,6 +1,6 @@
 """Deterministic (non-LLM) eval metrics.
 
-Two of the PRP's three declared metrics can be checked without a judge call:
+Two of the product spec's three declared metrics can be checked without a judge call:
 escalation precision (compare expected vs actual routing decision) and a
 `must_avoid` phrase check (golden-set-declared phrases a good draft should
 never contain). The third — brand-voice fidelity / groundedness — needs

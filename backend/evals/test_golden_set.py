@@ -13,7 +13,7 @@ from evals.run_evals import DEFAULT_POSTS_PATH, DEFAULT_REPLIES_PATH, load_jsonl
 
 # eval-agent.md's review checklist: "enough examples per category to be
 # statistically meaningful (not 3 examples for a production-grade claim)".
-# These are lower than the PRP's target (50 posts / 30 replies) because this
+# These are lower than the product spec's target (50 posts / 30 replies) because this
 # is starter data, not the user's real curated set — but still enough to be
 # a meaningful smoke test, not a token gesture.
 _MIN_POST_CASES = 15

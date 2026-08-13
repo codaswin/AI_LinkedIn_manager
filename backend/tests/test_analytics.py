@@ -86,7 +86,7 @@ async def test_generate_weekly_digest_calls_report_tool_without_approval() -> No
 
 @pytest.mark.asyncio
 async def test_generate_weekly_digest_routes_llm_call_through_run_step() -> None:
-    """CLAUDE.md non-negotiable #1: no module may call an LLM client directly — every call must
+    """project invariant #1: no module may call an LLM client directly — every call must
 
     go through harness.loop.run_step(). This asserts the digest's judgment call receives a real
     AgentState/AgentRunConfig (run_step's signature), not a bespoke keyword-argument shape.

@@ -39,7 +39,7 @@ class ResearchPackage(BaseModel):
     `citations` is built by code directly from `source_results` URLs, never
     written by the LLM — the synthesis step's prompt only ever asks for
     executive_summary/key_findings/interesting_angles, so there is no path
-    by which a citation could be fabricated (PRP "Research Output": "Do not
+    by which a citation could be fabricated (product spec "Research Output": "Do not
     fabricate citations or URLs").
     """
 

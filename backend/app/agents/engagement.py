@@ -1,15 +1,15 @@
 """Engagement Agent — monitors comments/DMs/connection requests, drafts
-replies, and likes relevant feed posts within safety-agent's gates.
+replies, and likes relevant feed posts within the safety module's gates.
 
 COORDINATION CONTRACT with the (parallel) safety-agent build: neither
 app.safety.approval_gate nor app.safety.guardrails may be imported at module
-level here, since either may not exist yet while safety-agent's build is in
+level here, since either may not exist yet while the safety module's build is in
 flight. Every call into them happens via a lazy import *inside* the function
 body that needs it, behind an injectable `*_fn` parameter — callers (and this
 module's own tests) always pass fakes rather than depending on the real
 safety module being finished.
 
-CLAUDE.md non-negotiable #1: every LLM call goes through harness.loop's
+project invariant #1: every LLM call goes through harness.loop's
 run_step() — this module never calls the injected `llm_client` directly, it
 only ever hands it to run_step().
 """
@@ -28,7 +28,7 @@ from app.llmops.model_router import route
 from app.rag.retrieve import retrieve
 from app.tools.registry import execute_tool
 
-# PRP SAFETY REQUIREMENTS: fixed value, duplicated from safety-agent's
+# safety requirements: fixed value, duplicated from the safety module's
 # guardrails.CONFIDENCE_THRESHOLD by design (a fixed constant, not something
 # computed by the other agent's build, so duplicating it here is safe).
 CONFIDENCE_THRESHOLD: float = 0.75
@@ -154,7 +154,7 @@ async def handle_notification(
     Refusal-topic match -> escalate, no draft. Otherwise draft (RAG-grounded,
     primary tier) and score confidence: below threshold -> escalate, at or
     above -> submit to the human approval queue. Never executes a gated tool
-    itself (CLAUDE.md non-negotiable #3).
+    itself (project invariant #3).
     """
     if refusal_check_fn is None:
         from app.safety.guardrails import matches_refusal_topic

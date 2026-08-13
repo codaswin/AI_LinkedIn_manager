@@ -2,7 +2,7 @@
 
 https://hacker-news.firebaseio.com/v0/ : {top,new,best}stories.json give ID
 lists; item/{id}.json gives the story itself. Deliberately does not fetch
-"hundreds of item details" per PRP guidance: it only ever expands a bounded
+"hundreds of item details" per product spec guidance: it only ever expands a bounded
 candidate window (_CANDIDATE_MULTIPLIER * limit, capped at _MAX_CANDIDATES)
 of the id list before filtering, and fetches item details with bounded
 concurrency (_ITEM_FETCH_CONCURRENCY).

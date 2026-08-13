@@ -1,14 +1,14 @@
 """Model routing table for the AI LinkedIn Manager's 5 runtime agents.
 
 This is the ONLY file in the codebase permitted to reference a specific
-Anthropic/Hermes model name as a literal string — see CLAUDE.md's Forbidden
+Anthropic/Hermes model name as a literal string — see project rules's Forbidden
 list: "Hardcoded API keys/model names in code — env vars + llmops/model_router.py".
 Every other module must obtain a model identifier by calling route(); it must
 never construct or hardcode one itself.
 
 route() is called BY the harness's run_step() — it never calls an LLM API on
 its own initiative, and no tool or agent may call an LLM directly, bypassing
-the harness (CLAUDE.md non-negotiable #1).
+the harness (project invariant #1).
 
 route_and_call() (bottom of this file) is the first real, live-model
 implementation of the `llm_client` callable every agent already accepts —
@@ -187,7 +187,7 @@ def registered_steps() -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 # Token budgets — context.budget owns the *mechanism* (register_tier_budget /
 # get_budget), model_router owns the *numbers*, since a tier's usable context
-# window is model config (CLAUDE.md: no hardcoded model config outside this
+# window is model config (project rules: no hardcoded model config outside this
 # file). Env-overridable so a different model's real window doesn't need a
 # code change.
 # ---------------------------------------------------------------------------
@@ -272,7 +272,7 @@ def _build_user_content(state: AgentState, budget_tokens: int) -> str:
 async def route_and_call(*, state: AgentState, config: AgentRunConfig) -> RouteAndCallResponse:
     """The live `llm_client` implementation — pass this wherever run_step()
 
-    needs a real model instead of a test fake. Every step CLAUDE.md rule #1
+    needs a real model instead of a test fake. Every step project invariant #1
     requires happens here, in order: budget check before the call, the call
     itself, cost recording, and tracing — all before returning.
 

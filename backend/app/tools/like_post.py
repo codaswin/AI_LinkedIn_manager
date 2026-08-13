@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 COMPOSIO_ACTION_SLUG = "LINKEDIN_LIKE_POST"
 
-# The PRP's SAFETY REQUIREMENTS section gives explicit daily caps for connections/replies/
+# The product spec's SAFETY REQUIREMENTS section gives explicit daily caps for connections/replies/
 # posts/deletes but names no number for likes. Rather than invent one, this reads a dedicated
 # env var (following the same LINKEDIN_API_RATE_LIMIT_*_DAILY convention) with no in-code
 # default: if it's unset, the tool fails closed instead of running unrate-limited.

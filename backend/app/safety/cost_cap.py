@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 
 # action -> (DailyRateLimiter action key, env var), mirrored from each gated
 # tool's own RATE_LIMIT_ENV_VAR (backend/app/tools/*.py). reply_to_comment and
-# reply_to_dm share one cap, per PRP: "<=20 comment/DM replies/day".
+# reply_to_dm share one cap, per product spec: "<=20 comment/DM replies/day".
 _ACTION_RATE_LIMITS: dict[str, tuple[str, str]] = {
     "publish_post": ("publish_post", "LINKEDIN_API_RATE_LIMIT_POSTS_DAILY"),
     "schedule_post": ("schedule_post", "LINKEDIN_API_RATE_LIMIT_POSTS_DAILY"),

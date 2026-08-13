@@ -1,7 +1,7 @@
 """Agent loop / runtime harness.
 
 run_step() in loop.py is the sole choke point for LLM calls in this
-codebase (CLAUDE.md non-negotiable rule #1). Nothing else here imports or
+codebase (project invariant #1). Nothing else here imports or
 calls an LLM client.
 """
 

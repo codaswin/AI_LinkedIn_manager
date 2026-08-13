@@ -7,7 +7,7 @@ import type { ApprovalRequest } from "../types";
 
 function ArgumentsPreview({ args }: { args: Record<string, unknown> }) {
   // Renders every argument key/value so nothing is hidden from the human
-  // approving it — CLAUDE.md: a delete_post approval must show the full
+  // approving it — project rules: a delete_post approval must show the full
   // post content, not a bare ID. Applies the same "show everything" rule
   // to every gated tool, not just delete_post specifically.
   return (

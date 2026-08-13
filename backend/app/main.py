@@ -4,7 +4,7 @@ exists and is fully tested elsewhere (memory.settings, safety.approval_gate,
 learning.proposal_review, llmops.cost_tracker). This file adds no new
 business logic of its own; every endpoint is a thin wrapper.
 
-This is what the PRP's "exposed via a FastAPI endpoint for the future
+This is what the product spec's "exposed via a FastAPI endpoint for the future
 dashboard UI" (memory-agent, Phase 1) and the Post-MVP "dashboard UI control"
 roadmap item build against — the API exists now, a UI can point at it later
 without this file changing.

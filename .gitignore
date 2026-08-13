@@ -1,33 +1,44 @@
 # ============================================================
-# SECRETS / CREDENTIALS — NEVER COMMIT
+# Environment and secrets
 # ============================================================
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
-*.env
+!**/.env.example
 
-# API keys / credentials
-*credentials*
-*secrets*
+# Key material and service credentials. Keep these extension/type based so
+# source files such as backend/app/safety/secrets.py are not hidden from Git.
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
 *.cer
+*.jks
+*.keystore
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.service-account.json
+*-service-account.json
+service-account*.json
+credentials.json
+token.json
+client_secret*.json
+oauth*.json
 
-# Local auth/token files
+# Local auth/token directories
+.auth/
 tokens/
 credentials/
 secrets/
-.auth/
-.auth.json
-token.json
-credentials.json
 
 
 # ============================================================
-# PYTHON
+# Python
 # ============================================================
 .venv/
 venv/
@@ -43,31 +54,76 @@ __pycache__/
 .ruff_cache/
 .pytype/
 .pyre/
+.hypothesis/
+.tox/
+.nox/
+
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 
 *.egg-info/
 .eggs/
 build/
 dist/
+site/
 
 
 # ============================================================
-# DATABASES / LOCAL DATA
+# Node / frontend
+# ============================================================
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+!.yarn/releases/
+!.yarn/plugins/
+!.yarn/sdks/
+!.yarn/versions/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+dist/
+dist-ssr/
+build/
+.vite/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+playwright-report/
+test-results/
+
+
+# ============================================================
+# Databases, local data, and runtime state
 # ============================================================
 *.db
+*.db-*
 *.sqlite
 *.sqlite3
+*.sqlite3-*
 
 data/
 storage/
 uploads/
 downloads/
+runtime/
+state/
+sessions/
+cache/
+.cache/
+tmp/
+temp/
 
 
 # ============================================================
-# AI / RAG / VECTOR DATA
+# AI / RAG / model artifacts
 # ============================================================
 vectorstore/
 vector_store/
@@ -80,77 +136,62 @@ checkpoints/
 
 *.faiss
 *.index
+*.onnx
+*.pt
+*.pth
+*.safetensors
 *.bin
 
 
 # ============================================================
-# AGENT MEMORY / RUNTIME STATE
+# Tooling and local app state
 # ============================================================
-# Anchored to root — backend/app/memory/ is the real source package (CLAUDE.md
-# project structure), not runtime state; an unanchored "memory/" here was
-# silently hiding it from git (and backend/app/models/ via the models/ rule
-# above) rather than the intended top-level runtime-artifact directory.
-/memory/
-runtime/
-state/
-sessions/
-cache/
-.cache/
+.composio/
+.codex/
+.agents/
+.claude/
+/PRPs/
+/agents/
+/skills/
+/check/
+skills-lock.json
+CLAUDE.md
+INITIAL.md
+.antigravity/
 
+
+# ============================================================
+# Logs and temporary files
+# ============================================================
 logs/
 *.log
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
 
 
 # ============================================================
-# IDE / EDITORS
+# IDE, editor, and OS files
 # ============================================================
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
 *~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# Antigravity/local IDE data
-.antigravity/
-
-
-# ============================================================
-# OS FILES
-# ============================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-
-# ============================================================
-# TEMP FILES
-# ============================================================
-tmp/
-temp/
-*.tmp
-*.bak
-
-
-# ============================================================
-# TEST / COVERAGE ARTIFACTS
-# ============================================================
-.coverage
-coverage.xml
-htmlcov/
-.tox/
-.nox/
-
-
-# ============================================================
-# NODE / FRONTEND — for future frontend
-# ============================================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-.next/
-dist/
-build/
-
-.local

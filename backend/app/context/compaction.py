@@ -1,6 +1,6 @@
 """Deliberate compaction — the ONLY way a component may shrink to fit budget.
 
-CLAUDE.md non-negotiable #4 / Forbidden section: silently exceeding the
+project invariant #4 / Forbidden section: silently exceeding the
 token budget and truncating mid-response is a defect, not a fallback; any
 size reduction must go through `compact()` below. No other function in this
 package is permitted to slice, cut, or otherwise shorten component text.

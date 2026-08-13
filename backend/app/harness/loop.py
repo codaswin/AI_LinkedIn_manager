@@ -1,6 +1,6 @@
 """The agent loop: perceive -> plan -> act -> observe, with explicit stops.
 
-CHOKE POINT CONTRACT (CLAUDE.md non-negotiable rule #1):
+CHOKE POINT CONTRACT (project invariant #1):
 
     run_step() is the ONLY function in this entire codebase permitted to
     call out to an LLM. Every runtime agent (Strategist, Writer, Engagement,
@@ -15,9 +15,9 @@ point of this module is the CHOKE POINT CONTRACT, not a working model
 integration.
 
 Tool execution is similarly injected via `tool_executor`. That keeps
-approval-gating (CLAUDE.md rule #3: requires_approval tools block until a
+approval-gating (project invariant #3: requires_approval tools block until a
 human approves, no exceptions) out of harness's scope — that's
-safety-agent's domain, built on top of tools.registry.execute_tool. Because
+the safety module's domain, built on top of tools.registry.execute_tool. Because
 run_step *awaits* tool_executor, a real implementation that blocks pending
 human approval will naturally block this loop too; harness only guarantees
 the call happens, is timed, and is logged.
@@ -64,7 +64,7 @@ class LLMResponse(Protocol):
 # purpose, so harness/ has zero import-time dependency on any LLM SDK.
 LLMClient = Callable[..., Awaitable[LLMResponse]]
 
-# Injected by tools.registry.execute_tool (wrapped with safety-agent's
+# Injected by tools.registry.execute_tool (wrapped with the safety module's
 # approval gate before it ever reaches here).
 ToolExecutor = Callable[[str, dict[str, Any]], Awaitable[ToolResult]]
 
@@ -93,7 +93,7 @@ async def run_step(
     This is the SINGLE choke point for LLM calls — see module docstring.
     Every tool call's log entry (inputs, outputs, latency, cost) is appended
     to state.tool_calls before this function returns, i.e. before control
-    goes back to the caller's loop for the next iteration (CLAUDE.md rule #2).
+    goes back to the caller's loop for the next iteration (project invariant #2).
     """
     llm_start = time.perf_counter()
     response = await llm_client(state=state, config=config)

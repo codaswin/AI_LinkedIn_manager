@@ -1,7 +1,7 @@
 """Analytics & Reporting Agent — weekly performance digest + gated delete suggestions.
 
-PRP RUNTIME AGENTS §4: weekly digest of impressions/engagement rate/follower delta, flags
-underperforming/stale/reputationally-risky posts for deletion. Escalation condition per the PRP:
+runtime-agent requirements §4: weekly digest of impressions/engagement rate/follower delta, flags
+underperforming/stale/reputationally-risky posts for deletion. Escalation condition per the product spec:
 "Any delete_post suggestion always routes to the approval queue ... regardless of confidence —
 never auto-executed." That rule is enforced inside suggest_deletion() itself (see its docstring)
 rather than via AgentRunConfig.escalation_condition, because it is specific to one tool
@@ -95,7 +95,7 @@ async def generate_weekly_digest(
     lands.
 
     The only judgment call here — which posts look underperforming/stale/risky enough to flag — is
-    made by the LLM, routed through harness.loop.run_step() (CLAUDE.md non-negotiable #1: no module
+    made by the LLM, routed through harness.loop.run_step() (project invariant #1: no module
     may hold an LLM client and invoke it directly). Numeric digest fields come straight from the
     tool's report (deterministic, stored engagement data), never re-derived by the LLM.
     """
@@ -153,8 +153,8 @@ async def suggest_deletion(
 
     Unconditional: there is no confidence parameter and no confidence-based skip anywhere in this
     function. Content Writer/Engagement may skip the approval queue when confidence is low —
-    Analytics never does, for a delete suggestion, because deletion is irreversible (PRP SAFETY
-    REQUIREMENTS + CLAUDE.md non-negotiable #3). Refuses to submit at all rather than submit a
+    Analytics never does, for a delete suggestion, because deletion is irreversible (product spec SAFETY
+    REQUIREMENTS + project invariant #3). Refuses to submit at all rather than submit a
     partial payload: a human approving an irreversible delete must see the full post content,
     publish date, and engagement stats, not a bare post_id.
     """

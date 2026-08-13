@@ -22,16 +22,14 @@
 10. [Eval Harness](#eval-harness)
 11. [Self-Learning Loop](#self-learning-loop)
 12. [End-to-End Workflows](#end-to-end-workflows)
-13. [A Note on "Animations"](#a-note-on-animations)
-14. [Tech Stack](#tech-stack)
-15. [Project Structure](#project-structure)
-16. [Model Routing & Cost Controls](#model-routing--cost-controls)
-17. [Environment Variables](#environment-variables)
-18. [Getting Started](#getting-started)
-19. [Dashboard (Frontend)](#dashboard-frontend)
-20. [Testing & Validation Gates](#testing--validation-gates)
-21. [Roadmap](#roadmap)
-22. [How This Was Built](#how-this-was-built)
+13. [Tech Stack](#tech-stack)
+14. [Project Structure](#project-structure)
+15. [Model Routing & Cost Controls](#model-routing--cost-controls)
+16. [Environment Variables](#environment-variables)
+17. [Getting Started](#getting-started)
+18. [Dashboard (Frontend)](#dashboard-frontend)
+19. [Testing & Validation Gates](#testing--validation-gates)
+20. [Roadmap](#roadmap)
 
 ---
 
@@ -342,7 +340,7 @@ A static audit enforces all of this stays true: `python -m app.safety.audit` wal
 | **`reply_to_dm`** | ✅ | Private message to a real third party |
 | **`send_connection_request`** | ✅ | Connection request — ToS-sensitive |
 
-Every tool has a Pydantic input schema (CLAUDE.md forbids a tool without one), every call is sandboxed with a timeout, and every execution is logged with inputs/outputs/latency/cost before the loop continues.
+Every tool has a Pydantic input schema (the project rules forbid a tool without one), every call is sandboxed with a timeout, and every execution is logged with inputs/outputs/latency/cost before the loop continues.
 
 ---
 
@@ -364,7 +362,7 @@ flowchart LR
         S2["Per-connection relationship context"]
         S3["Standing research interests"]
     end
-    Note["Every write carries `source` + `confidence`<br/>— CLAUDE.md forbids untraceable memory"]
+    Note["Every write carries `source` + `confidence`<br/>— the project rules forbid untraceable memory"]
     Working -.-> Note
     Episodic -.-> Note
     Semantic -.-> Note
@@ -399,7 +397,7 @@ flowchart TB
     Baseline{{"baseline.json"}}
     Gate{"Δ > 5%?"}
     Pass(["✅ ship"])
-    Fail(["❌ block — PRP regression policy"])
+    Fail(["❌ block — regression policy"])
 
     Golden --> Agents
     Agents --> Metrics
@@ -534,12 +532,6 @@ sequenceDiagram
         Human->>Gate: approve or reject
     end
 ```
-
----
-
-## A Note on "Animations"
-
-Being upfront: a plain `README.md` rendered on GitHub can't run real animation — no JS, no CSS transitions, no live motion. What it *can* do natively is render [Mermaid](https://mermaid.js.org/) diagrams, which is why this document leans on them heavily above rather than static ASCII art or (worse) a fabricated animated GIF I have no way to actually produce or verify renders correctly. Every diagram in this README is real, valid Mermaid syntax that GitHub will render as an interactive-feeling SVG in the actual repo view. If you want true animation (a recorded terminal session of the eval suite running, a GIF of the approval-queue UI once one exists), that's a good candidate for a `/docs/media` folder with real captured assets — nothing here should be treated as a placeholder for that.
 
 ---
 
@@ -782,16 +774,3 @@ Current state: **497 tests passing, 88.33% coverage**, ruff/mypy clean, frontend
 - [ ] Analytics-driven auto-scheduling
 
 **Known limitations carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (agents call `tools.registry.execute_tool()` directly outside the harness loop), so harness-native tool execution/logging remains future work. `schedule_post` is registered and approval-gated but intentionally disabled by the Content Writer until a real scheduling backend exists. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
-
----
-
-## How This Was Built
-
-This system was built PRP-style: a detailed spec (`INITIAL.md`) generated a full implementation blueprint, executed in phases with validation gates between each:
-
-```
-Phase 1 (Foundation) → Phase 2 (5 runtime agents + safety) → Phase 3 (evals + self-learning)
-  → Phase 4 (FastAPI serving layer + scheduled learning loop) → Phase 5 (live LLM client)
-```
-
-Each phase's validation gate had to pass before the next started. Every non-trivial design decision in this codebase — why X is optional, why deletion has no confidence bypass, why `system_prompt` changes can never auto-apply — traces back to an explicit requirement in that original spec, not an implementation afterthought.

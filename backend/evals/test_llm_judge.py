@@ -70,7 +70,7 @@ async def test_judge_post_returns_parsed_scores(monkeypatch: pytest.MonkeyPatch)
 
 
 async def test_judge_post_routes_through_run_step_not_llm_client_directly() -> None:
-    """CLAUDE.md non-negotiable #1 regression guard, mirroring
+    """project invariant #1 regression guard, mirroring
 
     test_analytics.py's equivalent test: the judge must receive a real
     AgentState/AgentRunConfig (run_step's signature), not a bespoke

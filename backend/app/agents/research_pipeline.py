@@ -4,7 +4,7 @@
 independent ResearchSource adapters in research_sources.py into the single
 ResearchPackage the Content Strategist/Writer consume.
 
-CLAUDE.md non-negotiable #1: the only LLM call in this module (the
+project invariant #1: the only LLM call in this module (the
 synthesis step) goes through harness.loop.run_step(), exactly like
 research.py's existing triage_x_posts()/write_research_note().
 """
@@ -32,7 +32,7 @@ from app.tools.registry import execute_tool
 
 logger = structlog.get_logger(__name__)
 
-# "Maximum results per source" / "maximum overall research budget" (PRP
+# "Maximum results per source" / "maximum overall research budget" (product spec
 # Reliability requirements) — plain caps, not configurable per-call beyond
 # these keyword args, so a research run can never fan out unboundedly.
 DEFAULT_LIMIT_PER_SOURCE = 8
@@ -79,7 +79,7 @@ def select_sources(query: str, explicit: list[str] | None = None) -> list[str]:
     """Explicit sources always win outright (caller knows best). Otherwise a
 
     keyword match against _SELECTION_RULES picks a small, purposeful subset
-    — never "call every source for every query" (PRP Source Selection).
+    — never "call every source for every query" (source selection requirements).
     "x" is never chosen by the heuristic (see research_sources.py docstring)
     — it can only be reached via `explicit`.
     """
@@ -126,7 +126,7 @@ def dedupe_results(results: list[ResearchResult]) -> list[ResearchResult]:
 
     `metadata["also_seen_on"]` recording which sources confirmed it and
     engagement numbers summed across sources — both inputs ranking's
-    cross-source-confirmation signal reads (PRP Ranking factor 6).
+    cross-source-confirmation signal reads (ranking requirements factor 6).
     """
     kept: list[ResearchResult] = []
     kept_norm_urls: list[str] = []
@@ -205,7 +205,7 @@ def rank_results(results: list[ResearchResult], query: str) -> list[ResearchResu
     """Weighted blend of relevance/recency/source-quality/engagement/novelty,
 
     deliberately weighted so relevance+recency+source-quality (0.75 of the
-    score) dominate raw engagement (0.10) — PRP Ranking: "Do NOT rank solely
+    score) dominate raw engagement (0.10) — ranking requirements: "Do NOT rank solely
     by popularity." Cross-source confirmation (results dedupe merged from
     multiple sources) adds a flat bonus on top.
     """

@@ -25,7 +25,7 @@ class ReplyToDmArgs(BaseModel):
     schema=ReplyToDmArgs,
 )
 async def execute(args: ReplyToDmArgs) -> dict[str, t.Any]:
-    # Shares the "replies" daily cap (PRP: <=20 comment/DM replies/day combined) with
+    # Shares the "replies" daily cap (product spec: <=20 comment/DM replies/day combined) with
     # reply_to_comment — same counter key, same env var.
     daily_rate_limiter.check_and_increment("reply_to_comment_or_dm", RATE_LIMIT_ENV_VAR)
     response = await execute_linkedin_action(

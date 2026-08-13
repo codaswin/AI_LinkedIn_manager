@@ -1,5 +1,5 @@
 """Safety audit CLI — run as `python -m app.safety.audit` or
-`python -m backend.app.safety.audit` (the latter is what the PRP's
+`python -m backend.app.safety.audit` (the latter is what the product spec's
 validation gates invoke from the repo root). Exits non-zero with a clear
 message on any failure; the exact phrase "zero ungated risky tools" is
 printed on success for the validation gate to grep.

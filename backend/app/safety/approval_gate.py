@@ -1,6 +1,6 @@
 """The human-approval workflow around tools.registry.execute_tool's low-level gate.
 
-CLAUDE.md non-negotiable #3: any `requires_approval` tool blocks until a human
+project invariant #3: any `requires_approval` tool blocks until a human
 approves — no exceptions. `approve()` below is THE ONLY function in this
 codebase permitted to call `tools.registry.execute_tool(..., approved=True)`;
 `audit.py` statically scans for that literal to enforce it stays that way.

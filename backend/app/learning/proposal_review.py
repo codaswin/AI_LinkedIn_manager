@@ -30,12 +30,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
-# INITIAL.md SELF-LEARNING SCOPE, verbatim:
+# product spec self-learning scope, verbatim:
 # "What improves automatically: Retrieval ranking weights in the RAG index;
 #  few-shot examples pulled from top-performing past posts."
 AUTO_APPLY_TYPES = {"retrieval_weight", "few_shot_example"}
 
-# INITIAL.md SELF-LEARNING SCOPE, verbatim: "What requires human review
+# product spec self-learning scope, verbatim: "What requires human review
 # before deploying: Any change to the system prompt or brand-voice profile;
 # any new tool; any change to approval-gating rules or confidence
 # thresholds." "safety_threshold" is kept as an alias since that's the exact

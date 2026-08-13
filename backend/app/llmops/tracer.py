@@ -1,7 +1,7 @@
 """Structured tracer: logs inputs, outputs, latency_ms, and cost_usd per LLM call.
 
 Sink is pluggable via the TRACE_SINK env var (default "local"). Only "local"
-(structured logs via structlog, per CLAUDE.md's tech stack) is implemented in
+(structured logs via structlog, per the project tech stack) is implemented in
 this phase; an unrecognized value falls back to "local" with a warning so a
 misconfigured env var never silently drops trace events. Swapping in a hosted
 sink (Langfuse/Phoenix) later means adding a TraceSink subclass and
@@ -110,7 +110,7 @@ def trace_llm_call(
 
     Called by the harness's run_step() after a routed call completes — every
     LLM call is logged with inputs, outputs, latency, and cost before the
-    loop continues (CLAUDE.md non-negotiable #2).
+    loop continues (project invariant #2).
     """
     resolved_trace_id = trace_id or str(uuid.uuid4())
     trace = LLMCallTrace(
