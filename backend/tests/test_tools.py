@@ -183,6 +183,12 @@ class TestDeletePostSchema:
         """
         import asyncio
 
+        # execute() checks the daily rate cap before ever reaching Composio — must be set
+        # explicitly here rather than relying on a real .env being present (it isn't in CI,
+        # or in any hermetic test environment; this test previously passed only by accident,
+        # borrowing the developer's own local .env).
+        monkeypatch.setenv("LINKEDIN_API_RATE_LIMIT_DELETES_DAILY", "3")
+
         from app.tools import delete_post as delete_post_module
 
         captured = {}
