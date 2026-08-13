@@ -7,8 +7,15 @@
 *.env
 
 # API keys / credentials
-*credentials*
-*secrets*
+# NOTE: bare *credentials*/*secrets* substring globs used to live here and
+# were removed — they matched ANY path containing that substring, including
+# legitimate source files like app/memory/platform_credentials.py and
+# app/safety/secrets.py (which hold no secrets themselves; the actual
+# secrets are encrypted DB rows). That silently untracked 4 real source
+# files and broke CI with ModuleNotFoundError on a fresh clone, since the
+# files were never in the repo to begin with. The specific patterns below
+# (credentials/, secrets/, credentials.json, etc.) already cover the real
+# secret-file shapes this project has — no bare substring glob is needed.
 *.pem
 *.key
 *.p12
