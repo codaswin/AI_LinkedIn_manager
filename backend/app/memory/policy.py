@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.memory.episodic import (
+from .episodic import (
     archive_post,
     posts_older_than,
     purge_thread_content,
