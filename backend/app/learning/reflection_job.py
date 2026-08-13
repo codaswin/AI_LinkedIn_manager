@@ -16,6 +16,7 @@ import json
 import uuid
 from typing import Any
 
+from app.activity import activity
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
 from app.harness.state import AgentState, RuntimeAgentName
 from app.learning.feedback import recent_negative_feedback
@@ -98,7 +99,8 @@ async def run_reflection(db: AsyncSession, llm_client: LLMClient, days: int = 7)
         current_task="Analyze recent negative feedback and propose up to 3 concrete changes.",
         scratchpad={"feedback_entries": _format_feedback_entries(feedback), "feedback_count": len(feedback)},
     )
-    state = await run_step(state, _reflection_config(), llm_client, tool_executor=None)
+    with activity("learning", "reflecting", detail="Analyzing recent feedback for patterns"):
+        state = await run_step(state, _reflection_config(), llm_client, tool_executor=None)
     response_text = state.conversation[-1]["content"] if state.conversation else "[]"
     raw_proposals = _parse_proposals(response_text)
 

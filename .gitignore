@@ -75,7 +75,7 @@ faiss_index/
 chroma/
 .chroma/
 embeddings/
-models/
+/models/
 checkpoints/
 
 *.faiss
@@ -86,7 +86,11 @@ checkpoints/
 # ============================================================
 # AGENT MEMORY / RUNTIME STATE
 # ============================================================
-memory/
+# Anchored to root — backend/app/memory/ is the real source package (CLAUDE.md
+# project structure), not runtime state; an unanchored "memory/" here was
+# silently hiding it from git (and backend/app/models/ via the models/ rule
+# above) rather than the intended top-level runtime-artifact directory.
+/memory/
 runtime/
 state/
 sessions/

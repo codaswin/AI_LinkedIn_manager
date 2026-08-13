@@ -3,7 +3,7 @@
 > A multi-agent system that manages a professional's LinkedIn presence end-to-end — drafting on-brand posts, engaging with the feed, replying to comments and DMs, tracking connections, reporting on performance, and researching AI/agentic-AI developments across six independent sources — with every public, irreversible, or third-party-contacting action gated behind explicit human approval. No exceptions, verified by test.
 
 <p align="center">
-  <em>5 runtime agents · 19 tools (6 require human approval) · 6 research sources · 399 tests · 88.7% coverage</em>
+  <em>5 runtime agents · 19 tools (6 require human approval) · 6 research sources · 497 tests · 88.33% coverage</em>
 </p>
 
 ---
@@ -616,9 +616,11 @@ Every `(agent, step)` pair resolves to exactly one tier — never hardcoded else
 
 ```env
 # --- Core infra ---
-DATABASE_URL=postgresql://user:pass@localhost:5432/db
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/db
 REDIS_URL=redis://localhost:6379/0
 VECTOR_DB_PATH=./data/faiss_index
+CREDENTIAL_ENCRYPTION_KEY=       # required before saving dashboard credentials
+DASHBOARD_API_KEY=               # required for real deployments; enables X-Dashboard-API-Key auth
 
 # --- Inference ---
 ANTHROPIC_API_KEY=
@@ -662,22 +664,35 @@ cd AI_LinkedIn_Manager
 cp .env.example .env
 # fill in ANTHROPIC_API_KEY, COMPOSIO_*, and any research-source credentials you have
 
-cd backend
-pip install -r requirements.txt
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r backend/requirements.txt
 
-# run the full test suite (no live credentials needed — everything runs on fakes)
-pytest backend/tests backend/evals -v
+# run the full test suite from the repo root (no live credentials needed — everything runs on fakes)
+python -m pytest backend/tests backend/evals -v
 
-# run the safety audit
-python -m app.safety.audit
+# run static checks and safety/tool audits
+ruff check backend
+mypy backend/app --ignore-missing-imports
+PYTHONPATH=backend python -m app.tools.registry --validate-all-schemas
+PYTHONPATH=backend python -m app.safety.audit
 
 # run the API server
+cd backend
 uvicorn app.main:app --reload
 # → http://localhost:8000/docs for interactive API docs (settings, approval
 #   queue, learning-proposal queue, cost summary, health)
 ```
 
 Hacker News, RSS, and DuckDuckGo web search work with **zero configuration**. Reddit, GitHub, and Product Hunt need the credentials above (GitHub works unauthenticated too, just at a lower rate limit). Without `ANTHROPIC_API_KEY` set, agents still run in tests (against fakes) but any endpoint that triggers a real model call (e.g. `/learning/reflect`) will fail loudly rather than pretend to succeed.
+
+For a local production-like stack, use Docker Compose from the repo root:
+
+```bash
+docker compose up --build
+```
+
+For real database changes, use the Alembic scaffold in `backend/alembic/`; `Base.metadata.create_all()` remains as a local/test safety net, not the deployment migration strategy.
 
 ---
 
@@ -700,6 +715,9 @@ flowchart LR
 
 | View | Backend resource | What you can do |
 |------|-------------------|-------------------|
+| **Workflows** | `/workflows/*` | Manually trigger research, content, analytics, and engagement runs |
+| **Connections** | `/credentials/*` | Save API keys/tokens/connected-account IDs encrypted at rest |
+| **Brand Voice** | `/brand-voice/*` | Maintain titled brand-voice profiles that are also ingested into RAG |
 | **Approval Queue** | `/approvals/*` | See every pending gated action with full argument content shown (never a bare post ID) — approve or reject |
 | **Self-Learning** | `/learning/proposals/*`, `/learning/reflect` | Review reflection-job proposals (flagged clearly when a type can never auto-apply), trigger an on-demand reflection run |
 | **Settings** | `/settings/{key}` | View/edit agent settings like `research_agent.poll_interval` |
@@ -713,7 +731,7 @@ npm install
 npm run dev   # → http://localhost:5173
 ```
 
-Requires the backend running separately (see [Getting Started](#getting-started)) with CORS allowing the dashboard's origin — `CORS_ALLOWED_ORIGINS` in `.env.example` already defaults to Vite's dev-server ports. Full setup/build details: `frontend/README.md`.
+Requires the backend running separately (see [Getting Started](#getting-started)) with CORS allowing the dashboard's origin — `CORS_ALLOWED_ORIGINS` in `.env.example` already defaults to Vite's dev-server ports. If backend `DASHBOARD_API_KEY` is set, set matching `VITE_DASHBOARD_API_KEY` in `frontend/.env` so requests include `X-Dashboard-API-Key`. Full setup/build details: `frontend/README.md`.
 
 ---
 
@@ -732,12 +750,15 @@ pytest backend/evals -v --tb=short
 python -m backend.evals.run_evals --compare-to-baseline
 
 # Final gate
-ruff check backend/ && mypy backend/app --ignore-missing-imports
+ruff check backend
+mypy backend/app --ignore-missing-imports
 pytest backend/tests backend/evals --cov=backend/app --cov=backend/evals --cov-fail-under=80
-python -m app.safety.audit
+PYTHONPATH=backend python -m app.tools.registry --validate-all-schemas
+PYTHONPATH=backend python -m app.safety.audit
+cd frontend && npm run lint && npm run build
 ```
 
-Current state: **399 tests passing, 88.7% coverage**, ruff/mypy clean, safety audit green.
+Current state: **497 tests passing, 88.33% coverage**, ruff/mypy clean, frontend lint/build clean, tool-registry audit green, safety audit green.
 
 ---
 
@@ -753,13 +774,14 @@ Current state: **399 tests passing, 88.7% coverage**, ruff/mypy clean, safety au
 - [x] FastAPI serving layer (`main.py`) — settings, approval queue, learning-proposal queue, cost, health, all over the same tested infrastructure above
 - [x] Self-learning loop running on an actual schedule (`learning/scheduler.py`, APScheduler, weekly by default, wired into the app's startup lifespan)
 - [x] A real live LLM client (`model_router.route_and_call`) — Anthropic for primary/cheap tiers, Hermes/vLLM (OpenAI-compatible) for the worker tier, both via a forced structured tool-call so every existing agent's response-parsing contract is untouched
-- [x] Dashboard UI for the approval queue, self-learning queue, agent settings, and cost (`frontend/`, React + Vite)
+- [x] Dashboard UI for workflows, connections, brand voice, approval queue, self-learning queue, agent settings, and cost (`frontend/`, React + Vite)
+- [x] Production hardening scaffold: encrypted credential store, optional dashboard API-key guard, Alembic baseline, Docker Compose, CI, and centralized Python tooling config
 
 **Explicitly post-MVP (per the original spec):**
 - [ ] Connection-relationship knowledge graph
 - [ ] Analytics-driven auto-scheduling
 
-**Known limitation carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (every agent calls `tools.registry.execute_tool()` directly, outside the harness loop), so wiring the harness's own tool-calling path was left for whichever agent first needs it rather than built speculatively. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
+**Known limitations carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (agents call `tools.registry.execute_tool()` directly outside the harness loop), so harness-native tool execution/logging remains future work. `schedule_post` is registered and approval-gated but intentionally disabled by the Content Writer until a real scheduling backend exists. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
 
 ---
 

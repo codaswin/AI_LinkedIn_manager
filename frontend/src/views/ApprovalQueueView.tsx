@@ -50,8 +50,24 @@ export function ApprovalQueueView() {
     setBusyId(id);
     setError(null);
     try {
-      await approveApproval(id, actor);
+      // A 200 response here does not mean the action actually happened —
+      // /approvals/{id}/approve marks the request approved AND immediately
+      // executes the underlying tool (e.g. actually posting to LinkedIn),
+      // returning that execution's own result. A failed post (bad
+      // credentials, Composio down, ...) still comes back as a normal 200
+      // with status: "error" inside the body — approving is only "done"
+      // once that inner status is checked too.
+      const result = await approveApproval(id, actor);
+      // refresh() clears the error banner itself (it has its own fetch that
+      // can fail) — it must run BEFORE this function sets its own error, or
+      // refresh()'s unconditional setError(null) wipes this one out before
+      // it's ever seen.
       await refresh();
+      if (result.status !== "success") {
+        setError(
+          `Approved, but the action itself failed (${result.status}): ${result.error ?? "no error detail returned"}`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

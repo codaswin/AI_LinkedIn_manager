@@ -1,0 +1,34 @@
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+asyncio_mode = "auto"
+testpaths = ["backend/tests", "backend/evals"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["F", "B"]
+ignore = ["B008", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**/*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = []
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+check_untyped_defs = true
+disable_error_code = ["arg-type", "attr-defined", "unreachable", "unused-ignore"]
+
+[tool.coverage.run]
+source = ["backend/app", "backend/evals"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

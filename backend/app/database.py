@@ -42,6 +42,11 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def init_models() -> None:
+    # Import the model package before create_all() so every mapped class is
+    # registered on Base.metadata during normal app startup, not only in tests
+    # that happen to import individual models first.
+    import app.models  # noqa: F401
+
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

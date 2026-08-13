@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import structlog
+from app.activity import activity
 from app.agents.research_schema import ResearchPackage, ResearchResult
 from app.agents.research_sources import ALL_SOURCES
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
@@ -260,10 +261,28 @@ def _parse_synthesis(response_text: str) -> dict[str, Any]:
     return payload
 
 
+_SOURCE_LABELS: dict[str, str] = {
+    "hackernews": "Hacker News",
+    "reddit": "Reddit",
+    "github": "GitHub",
+    "producthunt": "Product Hunt",
+    "rss": "RSS feeds",
+    "web": "the web",
+    "x": "X (Twitter)",
+}
+
+
 async def _fetch_source(source: str, query: str, limit: int) -> list[ResearchResult]:
     adapter = ALL_SOURCES[source]
+    label = _SOURCE_LABELS.get(source, source)
     try:
-        return await adapter(query, limit)
+        # Sources run concurrently (asyncio.gather in research()/
+        # conduct_research()) against activity.py's single global slot, so
+        # under concurrency the board shows whichever source most recently
+        # checked in rather than every source at once — an honest
+        # "last known active step" signal, not a precise per-thread tracker.
+        with activity("research", "researching", detail=f"Searching {label} for {query!r}", source=source):
+            return await adapter(query, limit)
     except Exception as exc:  # noqa: BLE001 — one source failing must never sink the whole run
         logger.warning("research_source_adapter_failed", source=source, error=str(exc))
         return []
@@ -356,7 +375,8 @@ async def conduct_research(
         ),
         scratchpad={"results": [r.model_dump(mode="json") for r in ranked]},
     )
-    state = await run_step(state, _synthesis_run_config(), llm_client, tool_executor=None)
+    with activity("research", "synthesizing", detail=f"Writing up findings for {query!r}"):
+        state = await run_step(state, _synthesis_run_config(), llm_client, tool_executor=None)
     response_text = state.conversation[-1]["content"] if state.conversation else ""
     synthesis = _parse_synthesis(response_text)
 

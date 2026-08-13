@@ -91,7 +91,10 @@ p {
   margin: 0;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="date"],
+textarea,
+select {
   font: inherit;
   color: var(--text-h);
   background: var(--surface);
@@ -100,7 +103,15 @@ input[type="text"] {
   padding: 0.5rem 0.7rem;
 }
 
-input[type="text"]:focus {
+textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+input[type="text"]:focus,
+input[type="date"]:focus,
+textarea:focus,
+select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }

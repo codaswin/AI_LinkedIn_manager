@@ -60,3 +60,22 @@ def get_prompt_history(agent_name: str) -> list[PromptVersion]:
 def reset_for_testing() -> None:
     """Clear the registry. Test-only."""
     _registry.clear()
+
+
+def snapshot_for_testing() -> dict[str, list[PromptVersion]]:
+    """Shallow-copy current registry state. Test-only, pairs with restore_for_testing().
+
+    Every runtime agent module registers its system prompt exactly once, at
+    import time. A test that clears the registry for isolation and then
+    leaves it empty permanently starves every later test (in any file) that
+    relies on that one-time registration having survived — module imports
+    are cached, so it never runs again. Snapshot before clearing, restore
+    after, so isolation doesn't outlive the test that needed it.
+    """
+    return {agent: list(versions) for agent, versions in _registry.items()}
+
+
+def restore_for_testing(snapshot: dict[str, list[PromptVersion]]) -> None:
+    """Replace the registry with a previously captured snapshot. Test-only."""
+    _registry.clear()
+    _registry.update(snapshot)

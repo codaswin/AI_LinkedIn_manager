@@ -18,6 +18,11 @@ class DeletePostArgs(BaseModel):
     # exactly what they're deleting in the approval payload itself, not trust an opaque ID that
     # a later lookup could resolve to the wrong post (or fail silently). Exactly one post per
     # call — no list/batch field exists here, so bulk delete is structurally impossible.
+    #
+    # post_id must be LinkedIn's own share identifier (the id/URN Composio's create-post response
+    # returns, e.g. from publish_post's composio_response) — not an internally-generated ID — since
+    # it's forwarded to Composio as `share_id` (see execute() below, verified against Composio's
+    # live LINKEDIN_DELETE_LINKED_IN_POST schema).
     post_id: str = Field(..., min_length=1)
     post_content: str = Field(..., min_length=1)
     published_at: datetime
@@ -34,7 +39,7 @@ class DeletePostArgs(BaseModel):
 )
 async def execute(args: DeletePostArgs) -> dict[str, t.Any]:
     daily_rate_limiter.check_and_increment("delete_post", RATE_LIMIT_ENV_VAR)
-    response = await execute_linkedin_action(COMPOSIO_ACTION_SLUG, {"post_id": args.post_id})
+    response = await execute_linkedin_action(COMPOSIO_ACTION_SLUG, {"share_id": args.post_id})
     return {
         "post_id": args.post_id,
         "status": "deleted",

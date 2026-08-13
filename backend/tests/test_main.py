@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from typing import Any
 
+import pytest
 import pytest_asyncio
 from app.database import Base, configure_engine
 from app.main import app, get_db
@@ -15,8 +17,68 @@ from app.models.agent_setting import AgentSetting  # noqa: F401
 from app.models.approval_request import ApprovalRequestRecord
 from app.models.feedback import FeedbackRecord  # noqa: F401
 from app.models.learning_proposal import LearningProposalRecord
+from app.models.platform_credential import PlatformCredentialRecord  # noqa: F401
+from app.tools import registry as registry_module
+from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# The `client` fixture builds an ASGITransport directly, which does not trigger
+# FastAPI's lifespan() — so the tool registry (normally populated there) must be
+# populated here explicitly, same pattern as test_tools.py/test_research.py.
+registry_module._import_all_tools()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test in this file gets a deterministic (no live model) provider
+
+    state by default, regardless of what's exported in whatever shell
+    actually runs this suite. model_router._hosted_provider() auto-detects
+    ANTHROPIC vs. OPENAI from whichever API key is present in the
+    environment — an ambient real key left unmocked would silently route a
+    workflow test onto a real, billed API call instead of the deterministic
+    503 (or mocked-model) path the test actually intends to exercise.
+    Individual tests that want the OpenAI/Anthropic path re-set the
+    relevant var themselves.
+
+    A full os.environ snapshot/restore, not just delenv of the known LLM
+    vars: /credentials PUT writes straight to os.environ (by design — a
+    saved key must take effect immediately, see
+    memory/platform_credentials.py), which monkeypatch's own revert can't
+    see or undo since it didn't make that change. Restoring the whole
+    environment is the only way to guarantee nothing a credentials test
+    saves (OPENAI_API_KEY, REDDIT_CLIENT_ID, ...) leaks into a later test.
+    """
+    snapshot = dict(os.environ)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    # Also stripped: a real (or merely present) COMPOSIO_API_KEY in whatever
+    # .env this suite happens to run against would otherwise let an approval
+    # test that reaches publish_post/schedule_post attempt a real network
+    # call to Composio instead of hitting the deterministic "not configured"
+    # path the test intends to exercise.
+    monkeypatch.delenv("COMPOSIO_API_KEY", raising=False)
+    monkeypatch.delenv("COMPOSIO_LINKEDIN_CONNECTED_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("COMPOSIO_X_CONNECTED_ACCOUNT_ID", raising=False)
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    # Both provider clients cache their SDK instance at module level on first
+    # use (see each client's _get_client()) — a real client built while a
+    # real key happened to be present would otherwise survive, unaffected by
+    # the monkeypatch.delenv above, into every later test in the process.
+    from app.llmops import anthropic_client, openai_client
+    from app.safety import secrets as secrets_module
+    from app.tools import composio_client
+
+    anthropic_client.reset_client_cache()
+    openai_client.reset_client_cache()
+    composio_client.reset_client_cache()
+    secrets_module.reset_for_testing()
+    yield
+    os.environ.clear()
+    os.environ.update(snapshot)
+    secrets_module.reset_for_testing()
 
 
 @pytest_asyncio.fixture
@@ -91,7 +153,7 @@ async def _seed_approval(client: AsyncClient) -> dict[str, Any]:
         record = ApprovalRequestRecord(
             id="appr-1",
             tool_name="publish_post",
-            arguments={"post_content": "hello world", "topic": "test"},
+            arguments={"content": "hello world"},
             requested_by_agent="content_writer",
             reason="test seed",
             confidence=0.9,
@@ -239,6 +301,203 @@ async def test_cost_summary(client: AsyncClient) -> None:
     body = response.json()
     assert "today_usd" in body
     assert "budget_usd" in body
+
+
+# ---------------------------------------------------------------------------
+# Activity
+# ---------------------------------------------------------------------------
+
+
+async def test_activity_idle_by_default(client: AsyncClient) -> None:
+    response = await client.get("/activity")
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+async def test_activity_reports_current_state(client: AsyncClient) -> None:
+    from app.activity import reset_for_testing, set_activity
+
+    reset_for_testing()
+    set_activity("research", "researching", detail="Searching Reddit", source="reddit")
+    try:
+        response = await client.get("/activity")
+        body = response.json()
+        assert body["agent"] == "research"
+        assert body["source"] == "reddit"
+    finally:
+        reset_for_testing()
+
+
+# ---------------------------------------------------------------------------
+# Brand voice
+# ---------------------------------------------------------------------------
+
+
+async def test_create_and_list_brand_voice(client: AsyncClient) -> None:
+    create_response = await client.post(
+        "/brand-voice", json={"title": "Confident Founder Voice", "content": "Direct, short sentences."}
+    )
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["title"] == "Confident Founder Voice"
+
+    list_response = await client.get("/brand-voice")
+    assert list_response.status_code == 200
+    assert [b["id"] for b in list_response.json()] == [created["id"]]
+
+
+async def test_create_brand_voice_rejects_empty_title(client: AsyncClient) -> None:
+    response = await client.post("/brand-voice", json={"title": "  ", "content": "some content"})
+    assert response.status_code == 422
+
+
+async def test_read_brand_voice_404s_for_unknown_id(client: AsyncClient) -> None:
+    response = await client.get("/brand-voice/does-not-exist")
+    assert response.status_code == 404
+
+
+async def test_update_brand_voice_happy_path(client: AsyncClient) -> None:
+    created = (await client.post("/brand-voice", json={"title": "Original", "content": "original"})).json()
+    response = await client.put(f"/brand-voice/{created['id']}", json={"title": "Updated", "content": "updated"})
+    assert response.status_code == 200
+    assert response.json()["title"] == "Updated"
+
+
+async def test_delete_brand_voice_happy_path(client: AsyncClient) -> None:
+    created = (await client.post("/brand-voice", json={"title": "Temp", "content": "temp content"})).json()
+    delete_response = await client.delete(f"/brand-voice/{created['id']}")
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"deleted": True}
+
+    get_response = await client.get(f"/brand-voice/{created['id']}")
+    assert get_response.status_code == 404
+
+
+async def test_delete_brand_voice_404s_for_unknown_id(client: AsyncClient) -> None:
+    response = await client.delete("/brand-voice/does-not-exist")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Connections (platform credentials)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_credentials_includes_every_known_platform(client: AsyncClient) -> None:
+    response = await client.get("/credentials")
+    assert response.status_code == 200
+    ids = {p["id"] for p in response.json()}
+    assert {"openai", "anthropic", "composio", "linkedin", "reddit", "github"} <= ids
+
+
+async def test_save_credentials_happy_path(client: AsyncClient) -> None:
+    response = await client.put("/credentials/openai", json={"values": {"api_key": "sk-abcd1234"}})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["connected"] is True
+    assert body["fields"][0]["masked_preview"] == "••••1234"
+    assert "sk-abcd1234" not in response.text
+
+
+async def test_save_credentials_rejects_missing_field(client: AsyncClient) -> None:
+    response = await client.put("/credentials/reddit", json={"values": {"client_id": "abc"}})
+    assert response.status_code == 422
+
+
+async def test_save_credentials_unknown_platform_422s(client: AsyncClient) -> None:
+    response = await client.put("/credentials/not-a-real-platform", json={"values": {"x": "y"}})
+    assert response.status_code == 422
+
+
+async def test_delete_credentials_happy_path(client: AsyncClient) -> None:
+    await client.put("/credentials/openai", json={"values": {"api_key": "sk-abcd1234"}})
+    response = await client.delete("/credentials/openai")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True}
+
+    listed = (await client.get("/credentials")).json()
+    assert next(p for p in listed if p["id"] == "openai")["connected"] is False
+
+
+async def test_delete_credentials_when_nothing_saved(client: AsyncClient) -> None:
+    response = await client.delete("/credentials/openai")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": False}
+
+
+# ---------------------------------------------------------------------------
+# Workflow triggers
+# ---------------------------------------------------------------------------
+
+
+async def test_research_workflow_works_without_a_live_model(client: AsyncClient, monkeypatch) -> None:
+    """The research workflow is synthesis-free — no ANTHROPIC_API_KEY needed.
+
+    Sources are mocked here purely to keep this a fast, offline unit test,
+    not because the endpoint itself requires it.
+    """
+    from app.agents import research_pipeline
+    from app.agents.research_schema import ResearchResult
+
+    async def fake_hackernews(query: str, limit: int) -> list[ResearchResult]:
+        return [ResearchResult(source="hackernews", title="A real result", url="https://example.com/a")]
+
+    monkeypatch.setitem(research_pipeline.ALL_SOURCES, "hackernews", fake_hackernews)
+
+    response = await client.post("/workflows/research", json={"query": "AI agents", "sources": ["hackernews"]})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_count"] == 1
+    assert body["results"][0]["source"] == "hackernews"
+
+
+async def test_research_workflow_rejects_unknown_source(client: AsyncClient) -> None:
+    response = await client.post("/workflows/research", json={"query": "AI agents", "sources": ["not-a-real-source"]})
+    assert response.status_code == 422
+
+
+async def test_content_workflow_503s_without_a_live_model(client: AsyncClient, monkeypatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from app.llmops import anthropic_client
+
+    anthropic_client.reset_client_cache()
+
+    response = await client.post("/workflows/content", json={"calendar_entries": ["agentic AI trends"]})
+    assert response.status_code == 503
+    assert "Anthropic" in response.json()["detail"]
+
+
+async def test_engagement_workflow_503s_without_a_live_model(client: AsyncClient, monkeypatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from app.llmops import anthropic_client
+
+    anthropic_client.reset_client_cache()
+
+    response = await client.post(
+        "/workflows/engagement", json={"notification_type": "comment", "text": "Great post!"}
+    )
+    assert response.status_code == 503
+
+
+async def test_analytics_workflow_happy_path_with_mocked_model(client: AsyncClient, monkeypatch) -> None:
+    """Proves the trigger -> agent -> response wiring works end to end when
+
+    a model IS available, not just that it fails gracefully when it isn't
+    (covered by the 503 tests above).
+    """
+    import app.llmops.model_router as model_router_module
+    from app.llmops.model_router import RouteAndCallResponse
+
+    async def fake_route_and_call(*, state, config):
+        return RouteAndCallResponse(text='{"flagged_posts": []}', confidence=0.9, goal_achieved=True)
+
+    monkeypatch.setattr(model_router_module, "route_and_call", fake_route_and_call)
+
+    response = await client.post("/workflows/analytics", json={})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["flagged_posts"] == []
+    assert "period_start" in body
 
 
 # ---------------------------------------------------------------------------

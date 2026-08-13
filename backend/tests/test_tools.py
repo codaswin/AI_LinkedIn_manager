@@ -174,6 +174,93 @@ class TestDeletePostSchema:
         delete_post_errors = [e for e in errors if e.startswith("delete_post")]
         assert delete_post_errors == []
 
+    def test_delete_post_sends_share_id_to_composio_not_post_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression coverage: LINKEDIN_DELETE_LINKED_IN_POST's real required field is
+
+        `share_id`, verified live against Composio's schema — our own `post_id` field
+        (kept for the approval-payload safety reasons in delete_post.py's docstring) must be
+        forwarded under that name, not sent through as `post_id` (which Composio doesn't accept).
+        """
+        import asyncio
+
+        from app.tools import delete_post as delete_post_module
+
+        captured = {}
+
+        async def fake_execute_linkedin_action(action_slug: str, arguments: dict) -> dict:
+            captured["action_slug"] = action_slug
+            captured["arguments"] = arguments
+            return {"successful": True}
+
+        monkeypatch.setattr(delete_post_module, "execute_linkedin_action", fake_execute_linkedin_action)
+
+        args = delete_post_module.DeletePostArgs(
+            post_id="urn:li:share:123",
+            post_content="a post",
+            published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            engagement_stats={"likes": 1},
+        )
+        asyncio.run(delete_post_module.execute(args))
+
+        assert captured["arguments"] == {"share_id": "urn:li:share:123"}
+
+
+class TestPublishAndSchedulePostSchemas:
+    """Both tools take the post's actual content, not an internal post_id —
+
+    Composio's LinkedIn create/schedule actions create a new post from text,
+    they don't look one up by an ID this codebase invented (regression
+    coverage for the bug where content_writer.py built {post_content, topic,
+    target_publish_date} arguments that neither tool's schema ever accepted,
+    so every real approve-and-post attempt failed with a validation error).
+    """
+
+    def test_publish_post_accepts_content(self) -> None:
+        entry = registry.get("publish_post")
+        instance = entry.schema(content="Hello, LinkedIn!")
+        assert instance.content == "Hello, LinkedIn!"
+
+    def test_publish_post_rejects_missing_content(self) -> None:
+        entry = registry.get("publish_post")
+        with pytest.raises(ValidationError):
+            entry.schema()
+
+    def test_publish_post_rejects_empty_content(self) -> None:
+        entry = registry.get("publish_post")
+        with pytest.raises(ValidationError):
+            entry.schema(content="")
+
+    def test_schedule_post_accepts_content_and_future_publish_at(self) -> None:
+        entry = registry.get("schedule_post")
+        future = datetime.now(timezone.utc) + timedelta(days=1)
+        instance = entry.schema(content="Hello, LinkedIn!", publish_at=future)
+        assert instance.content == "Hello, LinkedIn!"
+
+    def test_schedule_post_rejects_missing_content(self) -> None:
+        entry = registry.get("schedule_post")
+        with pytest.raises(ValidationError):
+            entry.schema(publish_at=datetime.now(timezone.utc) + timedelta(days=1))
+
+    def test_schedule_post_execute_reports_no_backend_rather_than_a_fake_success(self) -> None:
+        """Composio's LinkedIn toolkit has no scheduling action (verified live —
+
+        see schedule_post.py's docstring) — execute() must surface that
+        clearly through the normal tool-error path rather than silently
+        succeeding or crashing uncaught.
+        """
+        import asyncio
+
+        async def _run() -> dict:
+            return await registry_module.execute_tool(
+                "schedule_post",
+                {"content": "hello", "publish_at": datetime.now(timezone.utc) + timedelta(days=1)},
+                approved=True,
+            )
+
+        outcome = asyncio.run(_run())
+        assert outcome["status"] == "error"
+        assert "no working backend" in outcome["error"]
+
 
 class TestSearchXPostsReadOnly:
     def test_action_scope_is_read(self) -> None:
@@ -235,7 +322,7 @@ def test_registry_blocks_unapproved_execution() -> None:
 
     async def _run() -> dict:
         return await registry_module.execute_tool(
-            "publish_post", {"post_id": "abc"}, approved=False
+            "publish_post", {"content": "hello world"}, approved=False
         )
 
     outcome = asyncio.run(_run())
@@ -245,4 +332,4 @@ def test_registry_blocks_unapproved_execution() -> None:
 def test_schedule_post_rejects_past_publish_at() -> None:
     entry = registry.get("schedule_post")
     with pytest.raises(ValidationError):
-        entry.schema(post_id="p1", publish_at=datetime.now(timezone.utc) - timedelta(days=1))
+        entry.schema(content="hello world", publish_at=datetime.now(timezone.utc) - timedelta(days=1))

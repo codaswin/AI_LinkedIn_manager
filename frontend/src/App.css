@@ -4,27 +4,124 @@
   min-height: 100svh;
 }
 
-.app-header {
+.app-body {
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
+  min-height: 0;
+}
+
+/* Sidebar — persistent left navigation. Brand at top, section list in the
+   middle, identity/theme controls pinned to the bottom, so the sidebar
+   reads top-to-bottom the way a real product's nav does rather than as a
+   loose stack of controls. */
+
+.app-sidebar {
+  flex-shrink: 0;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  border-right: 1px solid var(--border);
+  padding: 1.1rem 0.9rem;
+  gap: 1.1rem;
 }
 
-.app-header h1 {
-  font-size: 1.15rem;
-  color: var(--accent);
-  letter-spacing: -0.01em;
-}
-
-.header-right {
+.sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.6rem;
+  padding: 0 0.35rem;
+}
+
+.sidebar-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow-y: auto;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0.55rem 0.65rem;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.87rem;
+  text-align: left;
+}
+
+.sidebar-item-icon {
+  font-size: 0.95rem;
+  width: 1.2rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-item:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text-h);
+}
+
+.sidebar-item-active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.sidebar-item-active:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-footer .actor-field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.sidebar-footer .actor-field input[type="text"] {
+  width: 100%;
+}
+
+.sidebar-footer .theme-toggle {
+  width: 100%;
+  justify-content: center;
 }
 
 .actor-field {
@@ -49,42 +146,61 @@
   gap: 0.4rem;
 }
 
-.app-nav {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0 1.5rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-
-.nav-tab {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  padding: 0.85rem 0.75rem;
-  color: var(--text);
-  font-weight: 600;
-  font-size: 0.9rem;
-  border-bottom: 2px solid transparent;
-}
-
-.nav-tab:hover:not(:disabled) {
-  background: transparent;
-  color: var(--text-h);
-}
-
-.nav-tab-active {
-  color: var(--text-h);
-  border-bottom: 2px solid var(--accent);
-}
-
 .app-main {
   flex: 1;
-  padding: 1.5rem;
-  max-width: 720px;
-  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 2rem 2.5rem;
+}
+
+.app-main > * {
+  max-width: 760px;
   margin: 0 auto;
+}
+
+@media (max-width: 760px) {
+  .app-body {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0.6rem 0.9rem;
+    overflow-x: auto;
+    gap: 0.75rem;
+  }
+
+  .sidebar-brand-name {
+    display: none;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .sidebar-item {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .sidebar-footer {
+    flex-direction: row;
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .sidebar-footer .actor-field {
+    flex-direction: row;
+  }
+
+  .app-main {
+    padding: 1.25rem;
+  }
 }
 
 .view-header {
@@ -206,6 +322,11 @@
   color: var(--danger);
 }
 
+.badge-neutral {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 .arg-list {
   margin: 0.6rem 0;
   border-top: 1px solid var(--border);
@@ -288,4 +409,406 @@
 
 .cost-bar-over {
   background: var(--danger);
+}
+
+.source-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.source-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+/* Workflow result panels ---------------------------------------------------
+   Each workflow's response gets its own reading, not a raw JSON dump — a
+   status badge, a compact meta line, and (for anything that produced
+   writing) a formatted post-content card. */
+
+.result-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.result-head h4 {
+  font-size: 0.98rem;
+  color: var(--text-h);
+}
+
+.result-meta {
+  font-size: 0.8rem;
+  color: var(--text);
+  margin-bottom: 0.7rem;
+}
+
+.result-meta strong {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.mono-chip {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  background: var(--surface-2);
+  color: var(--text-h);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+}
+
+.result-footnote {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.post-content-card {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  font-size: 0.88rem;
+  color: var(--text-h);
+}
+
+.post-content p {
+  margin: 0 0 0.75rem;
+  line-height: 1.55;
+}
+
+.post-content p:last-child {
+  margin-bottom: 0;
+}
+
+.post-content .post-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  line-height: 1.55;
+}
+
+.post-content .post-list:last-child {
+  margin-bottom: 0;
+}
+
+.post-content .hashtag {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+}
+
+.stat-n {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-l {
+  font-size: 0.72rem;
+  color: var(--text);
+}
+
+.flag-list,
+.research-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.flag-list li {
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.research-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 0.85rem;
+}
+
+.source-chip {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+/* Activity banner ---------------------------------------------------------
+   Persistent strip showing what the system is doing right now, polled from
+   GET /activity. Idle and active states use distinct visual language so a
+   glance tells you which one you're looking at without reading the text. */
+
+.activity-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1.5rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-banner-idle {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.activity-banner-active {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text);
+  opacity: 0.4;
+  animation: activity-idle-pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.activity-icon {
+  display: inline-flex;
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.activity-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-text strong {
+  color: var(--accent);
+}
+
+.activity-elapsed {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+@keyframes activity-idle-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+/* Research: a magnifying-glass/source icon sweeping side to side, like it's
+   scanning a page of results. */
+.activity-anim-scan {
+  animation: activity-scan 1.1s ease-in-out infinite;
+}
+
+@keyframes activity-scan {
+  0%,
+  100% {
+    transform: translateX(-3px) rotate(-8deg);
+  }
+  50% {
+    transform: translateX(3px) rotate(8deg);
+  }
+}
+
+/* Content Strategist: a compass slowly turning while it decides what to post. */
+.activity-anim-spin {
+  animation: activity-spin 2.2s linear infinite;
+}
+
+@keyframes activity-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Content Writer: a pencil wiggling as if actively writing. */
+.activity-anim-wiggle {
+  animation: activity-wiggle 0.6s ease-in-out infinite;
+}
+
+@keyframes activity-wiggle {
+  0%,
+  100% {
+    transform: rotate(-12deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+/* Analytics: a small bounce, like a bar chart's bars growing and settling. */
+.activity-anim-bars {
+  animation: activity-bars 0.9s ease-in-out infinite;
+}
+
+@keyframes activity-bars {
+  0%,
+  100% {
+    transform: scaleY(0.85);
+  }
+  50% {
+    transform: scaleY(1.2);
+  }
+}
+
+/* Engagement: a chat bubble bouncing like it's mid-reply. */
+.activity-anim-bounce {
+  animation: activity-bounce 0.7s ease-in-out infinite;
+}
+
+@keyframes activity-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Self-Learning: a brain gently glowing/pulsing while reflecting. */
+.activity-anim-glow {
+  animation: activity-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes activity-glow {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-dot,
+  .activity-anim-scan,
+  .activity-anim-spin,
+  .activity-anim-wiggle,
+  .activity-anim-bars,
+  .activity-anim-bounce,
+  .activity-anim-glow {
+    animation: none;
+  }
+}
+
+/* Sidebar field hint (Acting as / anything else that needs a one-line
+   plain-language "why is this here") ---------------------------------- */
+
+.field-hint {
+  font-size: 0.72rem;
+  color: var(--text);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Connections (platform credentials) --------------------------------------
+   Grouped platform cards, each with its own small credential form. Kept
+   visually close to the existing .card conventions rather than inventing a
+   new pattern — the only additions are the field grid and the credential-
+   type/required pills. */
+
+.connection-group {
+  margin-top: 1.75rem;
+}
+
+.connection-group:first-of-type {
+  margin-top: 0;
+}
+
+.connection-group-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin-bottom: 0.6rem;
+}
+
+.connection-required-badge {
+  margin-left: 0.5rem;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.62rem;
+  vertical-align: middle;
+}
+
+.connection-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.connection-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.connection-field input {
+  font-weight: 400;
+}
+
+.connection-help {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 0.25rem;
 }

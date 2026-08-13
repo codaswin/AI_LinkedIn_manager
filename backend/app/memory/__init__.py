@@ -1,3 +1,3 @@
-from app.memory import episodic, policy, semantic, settings, working
+from app.memory import brand_voice, episodic, platform_credentials, policy, semantic, settings, working
 
-__all__ = ["episodic", "policy", "semantic", "settings", "working"]
+__all__ = ["brand_voice", "episodic", "platform_credentials", "policy", "semantic", "settings", "working"]

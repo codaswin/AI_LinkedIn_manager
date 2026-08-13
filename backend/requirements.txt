@@ -2,6 +2,7 @@
 pydantic==2.13.4
 structlog==26.1.0
 python-dotenv==1.2.2
+cryptography==50.0.0
 
 # Harness / agents / LLM integration
 composio==0.19.0
@@ -23,8 +24,9 @@ httpx==0.28.1
 fastapi==0.141.1
 uvicorn==0.52.2
 
-# Live LLM client (llmops/anthropic_client.py)
+# Live LLM clients (llmops/anthropic_client.py, llmops/openai_client.py)
 anthropic==0.121.0
+openai==3.0.0
 
 # Self-learning loop scheduler (learning/scheduler.py)
 APScheduler==3.11.3
@@ -40,3 +42,9 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 fakeredis==2.37.0
+
+alembic==1.17.2
+
+ruff==0.14.8
+
+mypy==1.19.0

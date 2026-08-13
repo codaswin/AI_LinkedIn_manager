@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
+from app.activity import activity
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
 from app.harness.state import AgentState, RuntimeAgentName
 from app.llmops.model_router import route
@@ -54,6 +55,7 @@ def build_run_config() -> AgentRunConfig:
         allowed_tools=["search_knowledge_base"],
         model_tier=route("content_strategist", "plan").tier.value,
         escalation_condition=None,
+        task_type="plan",
     )
 
 
@@ -123,9 +125,11 @@ async def build_post_brief(
         task_id="content-strategist-plan",
         agent_name=RuntimeAgentName.CONTENT_STRATEGIST,
         current_task=(
-            "Produce exactly one PostBrief as a JSON object with keys "
-            "topic, angle, format (text/article/poll), and "
-            "target_publish_date (ISO date or null), for the next LinkedIn post."
+            f"Today's date is {datetime.now(tz=timezone.utc).date().isoformat()}. Produce exactly one PostBrief as a JSON "
+            "object with keys topic, angle, format (text/article/poll), and target_publish_date "
+            "(ISO date or null), for the next LinkedIn post. If you set target_publish_date, it "
+            "must be a real date after today — never guess a date without today's date as your "
+            "reference point."
         ),
         scratchpad={
             "calendar_entries": calendar_entries,
@@ -134,7 +138,8 @@ async def build_post_brief(
         },
     )
 
-    state = await run_step(state, config, llm_client, tool_executor=None)
+    with activity("content_strategist", "planning", detail="Deciding what to post about next"):
+        state = await run_step(state, config, llm_client, tool_executor=None)
 
     response_text = state.conversation[-1]["content"] if state.conversation else ""
     return _parse_brief(response_text)

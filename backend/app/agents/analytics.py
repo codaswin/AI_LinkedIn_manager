@@ -23,6 +23,7 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from typing import Any
 
+from app.activity import activity
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
 from app.harness.state import AgentState, RuntimeAgentName
 from app.llmops.model_router import route
@@ -52,6 +53,7 @@ ANALYTICS_AGENT_CONFIG = AgentRunConfig(
     allowed_tools=["generate_analytics_report", "search_knowledge_base", "delete_post"],
     model_tier=route(AGENT_NAME, "summarize").tier.value,
     escalation_condition=None,
+    task_type="summarize",
 )
 
 
@@ -123,7 +125,8 @@ async def generate_weekly_digest(
             "period_end": period_end.isoformat(),
         },
     )
-    state = await run_step(state, ANALYTICS_AGENT_CONFIG, llm_client, tool_executor=None)
+    with activity("analytics", "analyzing", detail="Reviewing this week's post performance"):
+        state = await run_step(state, ANALYTICS_AGENT_CONFIG, llm_client, tool_executor=None)
     response_text = state.conversation[-1]["content"] if state.conversation else ""
     summary = _parse_digest_summary(response_text)
 

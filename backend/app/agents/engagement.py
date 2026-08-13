@@ -20,6 +20,7 @@ import inspect
 import typing as t
 from collections.abc import Awaitable, Callable
 
+from app.activity import activity
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
 from app.harness.state import AgentState, RuntimeAgentName
 from app.llmops import prompt_registry
@@ -202,7 +203,8 @@ async def handle_notification(
         model_tier=tier.tier.value,
         task_type="draft",
     )
-    state = await run_step(state, config, llm_client)
+    with activity("engagement", "engaging", detail=f"Drafting a reply to a {notification_type}"):
+        state = await run_step(state, config, llm_client)
 
     draft_text = state.conversation[-1]["content"] if state.conversation else ""
     confidence = state.confidence if state.confidence is not None else 0.0

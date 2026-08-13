@@ -7,15 +7,28 @@ from app.llmops import cost_tracker, model_router, tracer
 from app.llmops.anthropic_client import AnthropicCallResult
 from app.llmops.hermes_client import HermesCallResult
 from app.llmops.model_router import RouteAndCallResponse, route_and_call
+from app.llmops.openai_client import OpenAICallResult
 from app.llmops.prompt_registry import register_prompt
 
 
 @pytest.fixture(autouse=True)
-def _reset_cost_and_trace() -> None:
+def _reset_cost_and_trace(monkeypatch: pytest.MonkeyPatch) -> None:
     cost_tracker.reset_for_testing()
     tracer.reset_sink_for_testing()
     register_prompt("content_writer", "You are the Content Writer.")
     register_prompt("engagement", "You are the Engagement Agent.")
+    # Every test in this file monkeypatches call_anthropic/call_openai/call_hermes
+    # directly rather than hitting a real API — but model_router._hosted_provider()
+    # auto-detects the provider from whichever of these keys is actually present
+    # in the environment. Left unmocked, a real ANTHROPIC_API_KEY/OPENAI_API_KEY
+    # sitting in the ambient shell environment silently steers a test onto the
+    # OTHER provider's (unmocked) branch, which either fails confusingly or —
+    # worse — falls through to a real, billed API call. Clearing both plus
+    # LLM_PROVIDER makes provider selection deterministic regardless of what's
+    # exported in whatever shell actually runs this suite.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     yield
     cost_tracker.reset_for_testing()
 
@@ -58,6 +71,28 @@ async def test_route_and_call_uses_anthropic_for_primary_tier(monkeypatch: pytes
     assert captured["model"] == "claude-sonnet-5"
     assert captured["system_prompt"] == "You are the Content Writer."
     assert "Write a post about agentic AI" in captured["user_content"]
+
+
+async def test_route_and_call_uses_openai_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    captured = {}
+
+    async def fake_call_openai(*, model, system_prompt, user_content):
+        captured["model"] = model
+        captured["system_prompt"] = system_prompt
+        captured["user_content"] = user_content
+        return OpenAICallResult(text="Here's your post.", confidence=0.9, goal_achieved=True, input_tokens=1000, output_tokens=500)
+
+    monkeypatch.setattr(model_router, "call_openai", fake_call_openai)
+
+    response = await route_and_call(state=_state(), config=_config())
+
+    assert response.text == "Here's your post."
+    assert captured["model"] == "gpt-4o-mini"
+    assert captured["system_prompt"] == "You are the Content Writer."
+    assert "Write a post about agentic AI" in captured["user_content"]
+    # gpt-4o-mini list pricing default: $0.00015/1K in, $0.0006/1K out.
+    assert response.cost_usd == pytest.approx(1000 / 1000 * 0.00015 + 500 / 1000 * 0.0006)
 
 
 async def test_route_and_call_uses_hermes_for_worker_tier(monkeypatch: pytest.MonkeyPatch) -> None:

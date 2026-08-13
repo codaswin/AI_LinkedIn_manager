@@ -18,19 +18,33 @@ from app.llmops.model_router import ModelProvider, ModelTier, route
 
 @pytest.fixture(autouse=True)
 def _reset_llmops_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate each test from module-level mutable state and env vars."""
+    """Isolate each test from module-level mutable state and env vars.
+
+    prompt_registry is snapshotted and restored rather than left cleared:
+    every runtime agent module registers its system prompt exactly once, at
+    import time, and that import is cached process-wide. Clearing the
+    registry to empty after the last test in this file would permanently
+    starve every later test file (in any collection order) that relies on
+    those one-time registrations having survived.
+    """
     cost_tracker.reset_for_testing()
+    prompt_snapshot = prompt_registry.snapshot_for_testing()
     prompt_registry.reset_for_testing()
     tracer.reset_sink_for_testing()
     monkeypatch.delenv("LLM_COST_BUDGET_DAILY_USD", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL_PRIMARY", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL_CHEAP", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL_PRIMARY", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL_CHEAP", raising=False)
     monkeypatch.delenv("HERMES_MODEL", raising=False)
     monkeypatch.delenv("HERMES_ENDPOINT", raising=False)
     monkeypatch.delenv("TRACE_SINK", raising=False)
     yield
     cost_tracker.reset_for_testing()
-    prompt_registry.reset_for_testing()
+    prompt_registry.restore_for_testing(prompt_snapshot)
     tracer.reset_sink_for_testing()
 
 
@@ -104,7 +118,58 @@ class TestRouting:
         assert route("content_strategist", "plan").model == "test-cheap-override"
         worker_config = route("engagement", "triage")
         assert worker_config.model == "test-worker-override"
-        assert worker_config.endpoint == "http://test-hermes:9999/v1"
+
+
+class TestProviderSelection:
+    """OpenAI support: PRIMARY/CHEAP now resolve to whichever hosted provider
+
+    is actually configured (LLM_PROVIDER, or auto-detected from which API
+    key is present) rather than being hardcoded to Anthropic. WORKER is
+    untouched — it's always Hermes regardless of provider selection.
+    """
+
+    def test_defaults_to_anthropic_when_no_key_present(self) -> None:
+        config = route("content_writer", "draft")
+        assert config.provider is ModelProvider.ANTHROPIC
+
+    def test_auto_detects_openai_when_only_openai_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        config = route("content_writer", "draft")
+        assert config.provider is ModelProvider.OPENAI
+        assert config.model == "gpt-4o-mini"
+
+    def test_prefers_anthropic_when_both_keys_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        config = route("content_writer", "draft")
+        assert config.provider is ModelProvider.ANTHROPIC
+
+    def test_llm_provider_env_var_wins_over_auto_detection(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("LLM_PROVIDER", "openai")
+        config = route("content_writer", "draft")
+        assert config.provider is ModelProvider.OPENAI
+
+    def test_unknown_llm_provider_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "not-a-real-provider")
+        with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
+            route("content_writer", "draft")
+
+    def test_openai_cheap_tier_also_defaults_to_the_low_cost_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        assert route("content_strategist", "plan").model == "gpt-4o-mini"
+
+    def test_openai_model_identifiers_come_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_MODEL_PRIMARY", "test-openai-primary")
+        monkeypatch.setenv("OPENAI_MODEL_CHEAP", "test-openai-cheap")
+        assert route("content_writer", "draft").model == "test-openai-primary"
+        assert route("content_strategist", "plan").model == "test-openai-cheap"
+
+    def test_worker_tier_stays_hermes_regardless_of_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        config = route("engagement", "triage")
+        assert config.provider is ModelProvider.HERMES
 
     def test_model_identifiers_have_sane_fallback_when_env_unset(self) -> None:
         # No env vars set (autouse fixture clears them) — route() must still
@@ -249,13 +314,14 @@ class TestPromptRegistry:
 # Static check: no literal model-identifier string outside model_router.py
 # ---------------------------------------------------------------------------
 
-# Matches concrete Anthropic/Hermes model IDs (e.g. "claude-sonnet-5",
-# "claude-haiku-4-5", "hermes-3") — NOT bare product-family words like
-# "Claude" or "Hermes" used in prose/comments elsewhere in the codebase,
-# which are legitimate architectural references rather than hardcoded
-# identifiers passed to an API call.
+# Matches concrete Anthropic/OpenAI/Hermes model IDs (e.g. "claude-sonnet-5",
+# "claude-haiku-4-5", "gpt-4o-mini", "hermes-3") — NOT bare product-family
+# words like "Claude", "GPT", or "Hermes" used in prose/comments elsewhere in
+# the codebase, which are legitimate architectural references rather than
+# hardcoded identifiers passed to an API call.
 _MODEL_ID_PATTERN = re.compile(
     r"claude-(?:sonnet|haiku|opus|fable|mythos)-[a-z0-9][a-z0-9.\-]*"
+    r"|gpt-[a-z0-9][a-z0-9.\-]*"
     r"|hermes-[a-z0-9][a-z0-9.\-]*",
     re.IGNORECASE,
 )

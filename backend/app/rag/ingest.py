@@ -102,6 +102,25 @@ class VectorStore:
         self._save()
         return len(chunks)
 
+    def remove(self, source_type: str, source_id: str) -> int:
+        """Evict a document's chunks without re-adding anything — the same
+
+        removal half of upsert()'s idempotent-replace logic, exposed
+        standalone for callers that delete a source document outright
+        (e.g. memory.brand_voice.delete_brand_voice()) rather than replacing
+        it. Returns the number of chunks removed.
+        """
+        key = f"{source_type}:{source_id}"
+        existing_ids = self._registry.get(key, [])
+        if not existing_ids:
+            return 0
+        self._index.remove_ids(np.array(existing_ids, dtype="int64"))
+        for eid in existing_ids:
+            self._chunks.pop(eid, None)
+        self._registry[key] = []
+        self._save()
+        return len(existing_ids)
+
     def search(self, query_vector: np.ndarray, k: int) -> list[tuple[int, float]]:
         if self._index.ntotal == 0:
             return []
@@ -126,6 +145,15 @@ def _upsert_sync(chunks: list[Chunk], index_path: str) -> int:
 
 async def _upsert(chunks: list[Chunk], index_path: str | None) -> int:
     return await asyncio.to_thread(_upsert_sync, chunks, _resolve_path(index_path))
+
+
+def _remove_sync(source_type: str, source_id: str, index_path: str) -> int:
+    return VectorStore(index_path).remove(source_type, source_id)
+
+
+async def remove_document(source_type: str, source_id: str, *, index_path: str | None = None) -> int:
+    """Evict one previously-ingested document's chunks. Returns the number removed."""
+    return await asyncio.to_thread(_remove_sync, source_type, source_id, _resolve_path(index_path))
 
 
 async def ingest_post(

@@ -34,6 +34,7 @@ from app.harness.loop import ToolCallRequest
 from app.llmops import cost_tracker, tracer
 from app.llmops.anthropic_client import call_anthropic
 from app.llmops.hermes_client import call_hermes
+from app.llmops.openai_client import call_openai
 from app.llmops.prompt_registry import get_prompt
 
 if TYPE_CHECKING:
@@ -53,6 +54,7 @@ class ModelTier(str, Enum):
 
 class ModelProvider(str, Enum):
     ANTHROPIC = "anthropic"
+    OPENAI = "openai"
     HERMES = "hermes"
 
 
@@ -61,6 +63,12 @@ class ModelProvider(str, Enum):
 # docstring) — do not copy them into any other file.
 _DEFAULT_ANTHROPIC_MODEL_PRIMARY = "claude-sonnet-5"
 _DEFAULT_ANTHROPIC_MODEL_CHEAP = "claude-haiku-4-5"
+# gpt-4o-mini for BOTH tiers, not just cheap: whoever configures OpenAI as
+# the provider is opting out of Anthropic's primary/cheap quality split in
+# favor of minimizing token cost across every step — see PRIMARY's own
+# comment on _resolve() below.
+_DEFAULT_OPENAI_MODEL_PRIMARY = "gpt-4o-mini"
+_DEFAULT_OPENAI_MODEL_CHEAP = "gpt-4o-mini"
 _DEFAULT_HERMES_MODEL = "hermes-3"
 _DEFAULT_HERMES_ENDPOINT = "http://localhost:8001/v1"
 
@@ -108,18 +116,49 @@ _ROUTING_TABLE: dict[tuple[str, str], ModelTier] = {
 }
 
 
+def _hosted_provider() -> ModelProvider:
+    """Which hosted provider backs the PRIMARY/CHEAP tiers (WORKER is always Hermes).
+
+    LLM_PROVIDER wins when set explicitly. Otherwise, auto-detect from
+    whichever API key is actually present — ANTHROPIC_API_KEY first (keeps
+    prior behavior unchanged for anyone already relying on the Anthropic
+    default), else OPENAI_API_KEY, so an OpenAI-only setup works without
+    also having to know to set LLM_PROVIDER. Falls back to ANTHROPIC when
+    neither key is set, which reproduces the original "ANTHROPIC_API_KEY is
+    not set" error rather than inventing a new failure mode.
+    """
+    explicit = os.environ.get("LLM_PROVIDER")
+    if explicit:
+        try:
+            return ModelProvider(explicit.strip().lower())
+        except ValueError as exc:
+            valid = [p.value for p in ModelProvider]
+            raise ValueError(f"Unknown LLM_PROVIDER={explicit!r}. Must be one of: {valid}") from exc
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return ModelProvider.ANTHROPIC
+    if os.environ.get("OPENAI_API_KEY"):
+        return ModelProvider.OPENAI
+    return ModelProvider.ANTHROPIC
+
+
 def _resolve(tier: ModelTier) -> ModelConfig:
-    if tier is ModelTier.PRIMARY:
-        model = os.environ.get("ANTHROPIC_MODEL_PRIMARY", _DEFAULT_ANTHROPIC_MODEL_PRIMARY)
-        return ModelConfig(tier=tier, provider=ModelProvider.ANTHROPIC, model=model)
-    if tier is ModelTier.CHEAP:
-        model = os.environ.get("ANTHROPIC_MODEL_CHEAP", _DEFAULT_ANTHROPIC_MODEL_CHEAP)
-        return ModelConfig(tier=tier, provider=ModelProvider.ANTHROPIC, model=model)
     if tier is ModelTier.WORKER:
         model = os.environ.get("HERMES_MODEL", _DEFAULT_HERMES_MODEL)
         endpoint = os.environ.get("HERMES_ENDPOINT", _DEFAULT_HERMES_ENDPOINT)
         return ModelConfig(tier=tier, provider=ModelProvider.HERMES, model=model, endpoint=endpoint)
-    raise ValueError(f"Unhandled model tier: {tier!r}")  # pragma: no cover — exhaustive over ModelTier
+
+    provider = _hosted_provider()
+    if provider is ModelProvider.OPENAI:
+        env_var = "OPENAI_MODEL_PRIMARY" if tier is ModelTier.PRIMARY else "OPENAI_MODEL_CHEAP"
+        default = _DEFAULT_OPENAI_MODEL_PRIMARY if tier is ModelTier.PRIMARY else _DEFAULT_OPENAI_MODEL_CHEAP
+        model = os.environ.get(env_var, default)
+        return ModelConfig(tier=tier, provider=ModelProvider.OPENAI, model=model)
+    if provider is ModelProvider.ANTHROPIC:
+        env_var = "ANTHROPIC_MODEL_PRIMARY" if tier is ModelTier.PRIMARY else "ANTHROPIC_MODEL_CHEAP"
+        default = _DEFAULT_ANTHROPIC_MODEL_PRIMARY if tier is ModelTier.PRIMARY else _DEFAULT_ANTHROPIC_MODEL_CHEAP
+        model = os.environ.get(env_var, default)
+        return ModelConfig(tier=tier, provider=ModelProvider.ANTHROPIC, model=model)
+    raise ValueError(f"Unhandled hosted provider for tier {tier!r}: {provider!r}")  # pragma: no cover
 
 
 def route(agent: str, step: str) -> ModelConfig:
@@ -269,6 +308,26 @@ async def route_and_call(*, state: AgentState, config: AgentRunConfig) -> RouteA
         input_tokens, output_tokens = hermes_result.input_tokens, hermes_result.output_tokens
         price_in = _price_per_1k("HERMES_PRICE_IN_PER_1K", 0.0)
         price_out = _price_per_1k("HERMES_PRICE_OUT_PER_1K", 0.0)
+    elif model_config.provider is ModelProvider.OPENAI:
+        openai_result = await call_openai(
+            model=model_config.model, system_prompt=system_prompt, user_content=user_content
+        )
+        result_text, result_confidence, result_goal_achieved = (
+            openai_result.text,
+            openai_result.confidence,
+            openai_result.goal_achieved,
+        )
+        input_tokens, output_tokens = openai_result.input_tokens, openai_result.output_tokens
+        # gpt-4o-mini list pricing at time of writing: $0.15/1M in, $0.60/1M
+        # out — same placeholder-not-verified caveat as the Anthropic prices
+        # below (module docstring). Both tiers default to the same price
+        # here because both tiers default to the same model (gpt-4o-mini).
+        if model_config.tier is ModelTier.PRIMARY:
+            price_in = _price_per_1k("OPENAI_PRICE_PRIMARY_IN_PER_1K", 0.00015)
+            price_out = _price_per_1k("OPENAI_PRICE_PRIMARY_OUT_PER_1K", 0.0006)
+        else:
+            price_in = _price_per_1k("OPENAI_PRICE_CHEAP_IN_PER_1K", 0.00015)
+            price_out = _price_per_1k("OPENAI_PRICE_CHEAP_OUT_PER_1K", 0.0006)
     else:
         anthropic_result = await call_anthropic(
             model=model_config.model, system_prompt=system_prompt, user_content=user_content
