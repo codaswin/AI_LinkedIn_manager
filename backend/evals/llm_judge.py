@@ -1,6 +1,6 @@
 """LLM-as-judge for brand-voice fidelity and groundedness.
 
-project invariant #1: this module never calls an LLM client directly
+CLAUDE.md non-negotiable #1: this module never calls an LLM client directly
 — both judge_post() and judge_reply() go through harness.loop.run_step(),
 exactly like every runtime agent's own LLM calls. RuntimeAgentName.EVALS
 (harness/state.py) exists specifically so this module can build a valid

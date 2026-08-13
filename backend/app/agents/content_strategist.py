@@ -1,9 +1,9 @@
 """Content Strategist Agent — decides WHAT to post about next.
 
-product spec § RUNTIME AGENTS, "1. Content Strategist Agent": this agent's only
+PRP § RUNTIME AGENTS, "1. Content Strategist Agent": this agent's only
 output is a structured PostBrief handed to the Content Writer Agent. It
 never produces post copy itself, and its output is never user-facing, so
-(per the product spec's Escalation column for this agent) it has no escalation
+(per the PRP's Escalation column for this agent) it has no escalation
 condition.
 """
 
@@ -45,7 +45,7 @@ class PostBrief(BaseModel):
 
 
 def build_run_config() -> AgentRunConfig:
-    """The product spec pins this agent to the cheap tier and search_knowledge_base only.
+    """The PRP pins this agent to the cheap tier and search_knowledge_base only.
 
     Resolved fresh (not module-cached) so a test that monkeypatches routing
     env vars sees the effect immediately.

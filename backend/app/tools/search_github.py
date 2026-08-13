@@ -2,7 +2,7 @@
 
 Works unauthenticated (GitHub's public rate limit applies); set GITHUB_TOKEN
 to raise that limit. Focused on repository discovery only (trending/new
-open-source AI projects, agent frameworks, dev tools) per product scope — code
+open-source AI projects, agent frameworks, dev tools) per PRP scope — code
 search is a separate, much more rate-limited GitHub endpoint and isn't
 needed for that goal.
 """

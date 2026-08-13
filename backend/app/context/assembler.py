@@ -1,13 +1,13 @@
 """Priority-ordered context assembly within a hard token budget.
 
-Priority order, highest first (context assembly requirements):
+Priority order, highest first (context-agent.md / PRP instructions):
 
     system_prompt > safety_rules > current_task > semantic_memory >
     rag_context > episodic_memory > older_conversation
 
 Higher-priority components are filled first and compacted last, if ever.
 system_prompt and safety_rules never compact or drop, no matter how far
-over budget the rest of the context is (project rules rule #4: this is the one
+over budget the rest of the context is (CLAUDE.md rule #4: this is the one
 thing that must never yield). Everything else that doesn't fit is handed to
 compaction.compact() — there is no code path in this module that drops or
 truncates a component outright.

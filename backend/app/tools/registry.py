@@ -90,7 +90,7 @@ registry = ToolRegistry()
 class ApprovalRequiredError(RuntimeError):
     """Raised when a requires_approval tool is invoked without an explicit approval grant.
 
-    project invariant #3 has no bypass — this is a defense-in-depth check at the
+    CLAUDE.md non-negotiable #3 has no bypass — this is a defense-in-depth check at the
     execution boundary, additive to (not a replacement for) the dedicated approval-gate the
     safety-agent builds on top of this registry.
     """

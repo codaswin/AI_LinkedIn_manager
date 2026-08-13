@@ -2,7 +2,7 @@
 
 Also includes a static check that no literal Anthropic/Hermes model-identifier
 string appears anywhere under backend/app/ outside of model_router.py, per
-the project rules ("Hardcoded API keys/model names in code — env
+CLAUDE.md's Forbidden list ("Hardcoded API keys/model names in code — env
 vars + llmops/model_router.py").
 """
 

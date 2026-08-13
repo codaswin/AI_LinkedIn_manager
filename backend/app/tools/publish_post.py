@@ -24,7 +24,7 @@ class PublishPostArgs(BaseModel):
     schema=PublishPostArgs,
 )
 async def execute(args: PublishPostArgs) -> dict[str, t.Any]:
-    # Reached only after the the safety module's approval gate passes this call through with
+    # Reached only after the safety-agent's approval gate passes this call through with
     # approved=True — see registry.execute_tool's ApprovalRequiredError guard.
     #
     # `author` and `commentary` are LINKEDIN_CREATE_LINKED_IN_POST's real required fields —

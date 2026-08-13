@@ -16,12 +16,12 @@ from pydantic import BaseModel, Field
 
 
 class RuntimeAgentName(str, Enum):
-    """The 5 runtime agents from the product spec's RUNTIME AGENTS section, plus the
+    """The 5 runtime agents from the PRP's RUNTIME AGENTS section, plus the
 
     two Phase 3 quality/self-improvement processes (eval-agent's LLM judge,
     learning-agent's reflection job). Neither EVALS nor LEARNING is a
-    "runtime agent" in the product spec sense — they don't act on the user's
-    LinkedIn/X — but project invariant #1 ("every LLM call goes through
+    "runtime agent" in the PRP sense — they don't act on the user's
+    LinkedIn/X — but CLAUDE.md rule #1 ("every LLM call goes through
     run_step()") is unconditional, so both need an AgentState/agent_name
     just like the 5 runtime agents do.
     """
@@ -51,7 +51,7 @@ class ApprovalStatus(str, Enum):
 
 
 class ToolCallRecord(BaseModel):
-    """One logged tool call. project invariant #2: inputs/outputs/latency/cost
+    """One logged tool call. CLAUDE.md rule #2: inputs/outputs/latency/cost
 
     must be captured for every tool call before the loop continues — this is
     the record shape that requirement is enforced against.
@@ -65,13 +65,13 @@ class ToolCallRecord(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-# Judgment call (product spec doesn't specify a per-run iteration cap): 10 gives a
+# Judgment call (PRP doesn't specify a per-run iteration cap): 10 gives a
 # plan -> act -> observe cycle enough room to finish multi-tool tasks (e.g.
 # Engagement Agent triaging several notifications) without letting a stuck
 # agent spin indefinitely before the budget check would otherwise catch it.
 DEFAULT_MAX_ITERATIONS = 10
 
-# safety requirements: "$10/day LLM spend" is the system-wide cost
+# PRP SAFETY REQUIREMENTS: "$10/day LLM spend" is the system-wide cost
 # ceiling. Used here as the default per-run budget context until per-agent /
 # per-task sub-budgets are introduced; actual system-wide daily aggregation
 # is llmops' responsibility (cost tracking toward the $10/day cap), not this
@@ -95,7 +95,7 @@ class AgentState(BaseModel):
     scratchpad: dict[str, Any] = Field(default_factory=dict)
 
     # Nullable: only Content Writer, Engagement, and Research populate this
-    # (product spec escalation conditions keyed on confidence < 0.75). Content
+    # (PRP escalation conditions keyed on confidence < 0.75). Content
     # Strategist and Analytics & Reporting leave it None — they don't have a
     # confidence-based escalation condition.
     confidence: float | None = None

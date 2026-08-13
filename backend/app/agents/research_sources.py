@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 SourceAdapter = t.Callable[[str, int], t.Awaitable[list[ResearchResult]]]
 
 # Example-only, deliberately small: query keywords map to a *starting point*
-# subreddit list, not an exhaustive taxonomy (product spec: "Do not hardcode research
+# subreddit list, not an exhaustive taxonomy (PRP: "Do not hardcode research
 # only to these communities. They are examples."). Unmatched queries fall
 # back to a sitewide Reddit search (subreddits=None) rather than an empty list.
 _SUBREDDIT_HINTS: dict[str, list[str]] = {

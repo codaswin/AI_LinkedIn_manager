@@ -5,7 +5,7 @@ Celery beat, ...) — weekly or after N new feedback entries, never inline in
 a request path (skills/LEARNING.md Best Practices). No scheduler is wired
 up here; that's deployment/ops, out of this module's scope.
 
-project invariant #1: this module never calls an LLM client directly
+CLAUDE.md non-negotiable #1: this module never calls an LLM client directly
 — it goes through harness.loop.run_step(), exactly like every runtime
 agent's own LLM calls.
 """

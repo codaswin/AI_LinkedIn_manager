@@ -1,4 +1,4 @@
-"""Feedback capture — product spec self-learning scope's two feedback-signal
+"""Feedback capture — INITIAL.md SELF-LEARNING SCOPE's two feedback-signal
 
 families: human approve/reject/edit decisions on drafts, and actual
 engagement metrics measured 7 days post-publish. Storage only; the
@@ -15,7 +15,7 @@ from app.models.feedback import FeedbackRecord
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Matches the product spec: "User approve/reject/edit actions on drafts;
+# Matches INITIAL.md exactly: "User approve/reject/edit actions on drafts;
 # actual engagement metrics ... measured 7 days post-publish."
 SIGNAL_APPROVED = "approved"
 SIGNAL_REJECTED = "rejected"

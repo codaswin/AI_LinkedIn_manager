@@ -1,4 +1,4 @@
-"""Eval runner + regression gate (validation gate 3).
+"""Eval runner + regression gate (PRP Validation Gate 3).
 
 Run as `python -m backend.evals.run_evals --compare-to-baseline` from the
 repo root (mirrors safety/audit.py's sys.path bootstrap, needed for the
@@ -192,7 +192,7 @@ def compare_to_baseline(
 ) -> None:
     """Raises RegressionError if any metric in _REGRESSION_METRICS drops more
 
-    than `threshold_pct` percent versus the stored baseline (product spec: "No eval
+    than `threshold_pct` percent versus the stored baseline (PRP: "No eval
     score may drop more than 5% between versions without explicit user
     sign-off"). If no baseline exists yet, this run establishes one instead
     of failing — there is nothing to regress against on the very first run.

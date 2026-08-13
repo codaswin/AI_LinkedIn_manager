@@ -1,6 +1,6 @@
 """Input/output guardrails: refusal-topic detection and human escalation.
 
-Refusal topics are the 5 named in the product spec's SAFETY REQUIREMENTS section:
+Refusal topics are the 5 named in the PRP's SAFETY REQUIREMENTS section:
 political endorsements, health/financial/legal advice, disparagement of a
 named individual or competitor, engagement-bait/misinformation, and
 authorship-misrepresenting impersonation. Matching is curated keyword/regex

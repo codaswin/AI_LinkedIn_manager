@@ -1,16 +1,16 @@
 """Research Agent — modular multi-source research over AI/Agentic AI/Hermes/tooling news.
 
-runtime-agent requirements #5: turns high-volume source results into a small number
+PRP RUNTIME AGENTS #5: turns high-volume source results into a small number
 of research notes/packages the Content Strategist can ground post topics in.
 Originally X (Twitter)-only; X's API cost made it worth de-risking, so
 research now defaults to six API-key-light/free sources (Hacker News,
 Reddit, web search, GitHub, Product Hunt, RSS — see research_sources.py and
 research_pipeline.py) with X kept only as an explicit, opt-in extra source,
 never the default. Every source this agent can reach is READ-ONLY, full
-stop (safety requirements, project rules hard project rule for this build):
+stop (PRP SAFETY REQUIREMENTS, CLAUDE.md hard project rule for this build):
 `ALLOWED_TOOLS` below must never grow a write-capable tool name.
 
-project invariant #1: this module never calls an LLM client directly.
+CLAUDE.md non-negotiable #1: this module never calls an LLM client directly.
 The cheap/worker X-triage step, the primary research-note digest step, and
 research_pipeline's multi-source synthesis step all go through
 harness.loop.run_step, the sole choke point for LLM calls — each simply
@@ -82,7 +82,7 @@ ALLOWED_TOOLS = [
 
 _POLL_INTERVAL_KEY = "research_agent.poll_interval"
 
-# Judgment call: the product spec only commits to "daily by default" and mentions a
+# Judgment call: the PRP only commits to "daily by default" and mentions a
 # future dashboard could set other cadences — hourly/weekly are the obvious
 # next values a UI would offer, so they're pre-registered. Anything else
 # raises rather than silently falling back (see poll_interval_to_timedelta).
@@ -101,7 +101,7 @@ class ResearchNote(BaseModel):
 
 
 def build_run_config() -> AgentRunConfig:
-    """Config for the primary-tier digest/write-up step (product spec item 6).
+    """Config for the primary-tier digest/write-up step (PRP item 6).
 
     Resolved fresh on every call, not module-cached, so a test that
     monkeypatches routing env vars sees the effect immediately — matches
@@ -250,7 +250,7 @@ async def write_research_note(
 async def get_poll_interval(db: AsyncSession) -> str:
     """Thin wrapper over memory.settings.get_setting — always read live.
 
-    Never cache or hardcode "daily" here: the whole point per the product spec is
+    Never cache or hardcode "daily" here: the whole point per the PRP is
     that a future dashboard UI can change this setting without a code
     change, so every scheduling decision must re-read it at call time.
     """

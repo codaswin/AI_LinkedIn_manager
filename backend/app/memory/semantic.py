@@ -29,7 +29,7 @@ def _default_index_path() -> str:
 class MissingProvenanceError(ValueError):
     """Raised when a semantic memory write omits `source` or `confidence`.
 
-    Forbidden outright per project rules: "Storing memory without a source and confidence field
+    Forbidden outright per CLAUDE.md: "Storing memory without a source and confidence field
     (untraceable memory is a liability)." This is enforced here, not just documented.
     """
 

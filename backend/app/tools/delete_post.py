@@ -14,7 +14,7 @@ RATE_LIMIT_ENV_VAR = "LINKEDIN_API_RATE_LIMIT_DELETES_DAILY"
 
 class DeletePostArgs(BaseModel):
     # post_content/published_at/engagement_stats are required, not Optional[...] lookups by
-    # post_id, per safety requirements: a human approving an irreversible delete must see
+    # post_id, per PRP SAFETY REQUIREMENTS: a human approving an irreversible delete must see
     # exactly what they're deleting in the approval payload itself, not trust an opaque ID that
     # a later lookup could resolve to the wrong post (or fail silently). Exactly one post per
     # call — no list/batch field exists here, so bulk delete is structurally impossible.

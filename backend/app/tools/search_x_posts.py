@@ -6,7 +6,7 @@ from app.tools.composio_client import execute_x_action
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field
 
-# Hard project rule (project rules / safety requirements): no tool in this system may ever
+# Hard project rule (CLAUDE.md / PRP SAFETY REQUIREMENTS): no tool in this system may ever
 # post/reply/DM/like/retweet/follow on X. This action slug must always resolve to a Composio
 # *search/read* scope on the X toolkit — never swap it for a write-scoped slug (CREATE_*,
 # POST_*, REPLY_*, DM_*, LIKE_*, RETWEET_*, FOLLOW_*, DELETE_*). test_tools.py asserts this.

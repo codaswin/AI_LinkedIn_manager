@@ -23,7 +23,7 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     """Deterministic, offline hashing-trick embedding.
 
     No embedding client exists yet in this fresh backend (that's the
-    the model-routing layer's job in a later phase), and the project rules forbid calling any
+    llmops-agent's job in a later phase), and CLAUDE.md forbids calling any
     LLM/embedding API directly from this layer anyway. A local hashed
     bag-of-words vector keeps ingest/retrieve fully offline and testable now;
     swapping in a real embedding client later only touches this function.

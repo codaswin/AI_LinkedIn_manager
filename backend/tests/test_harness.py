@@ -45,7 +45,7 @@ def test_no_module_besides_loop_invokes_the_llm_client() -> None:
 
     that looks like invoking an LLM client (by the conventional parameter
     name `llm_client`, or the future model_router entrypoint). This is a
-    static proxy for project invariant #1: run_step() is the sole choke point.
+    static proxy for CLAUDE.md rule #1: run_step() is the sole choke point.
     """
     offenders: dict[str, list[int]] = {}
     for path in HARNESS_DIR.glob("*.py"):

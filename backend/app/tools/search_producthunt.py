@@ -8,7 +8,7 @@ data than a research run needs).
 
 PRODUCTHUNT_TOKEN is required; missing it raises ProductHuntConfigError,
 caught by tools.sandbox and turned into a normal error result so a missing
-PH token degrades only this one source (product spec: "Keep Product Hunt failures
+PH token degrades only this one source (PRP: "Keep Product Hunt failures
 isolated so the entire researcher does not fail when this integration is
 unavailable").
 """

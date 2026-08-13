@@ -2,7 +2,7 @@
 
   ESCALATE_IF:
     - Any requires_approval tool is found executing without a gate (always escalates)
-    - Eval suite regresses below the threshold set in the product spec (always escalates)
+    - Eval suite regresses below the threshold set in INITIAL.md (always escalates)
     - 2 retry attempts failed on a non-safety-critical task
 
 Non-safety-critical failures (LLM API hiccups, tool timeouts, transient

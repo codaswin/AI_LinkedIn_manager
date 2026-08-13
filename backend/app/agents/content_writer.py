@@ -1,13 +1,13 @@
 """Content Writer Agent — writes brand-voice-grounded LinkedIn post drafts.
 
-runtime-agent requirements #2: turns a Content Strategist brief into full post copy,
+PRP RUNTIME AGENTS #2: turns a Content Strategist brief into full post copy,
 grounded in the user's style guide, past posts, and industry news, then
 self-scores confidence that the draft matches brand voice. A draft either
 clears CONFIDENCE_THRESHOLD and goes to the human-approval queue, or it
 doesn't and gets flagged for a human to rewrite by hand — there is no
 in-between state.
 
-project invariant #1: this module never calls llm_client directly.
+CLAUDE.md non-negotiable #1: this module never calls llm_client directly.
 It goes through harness.loop.run_step, the sole choke point for LLM calls.
 """
 
@@ -49,9 +49,9 @@ SYSTEM_PROMPT = (
 
 register_prompt("content_writer", SYSTEM_PROMPT)
 
-# safety requirements: fixed threshold, not computed. safety-agent
+# PRP SAFETY REQUIREMENTS: fixed threshold, not computed. safety-agent
 # independently defines the same constant in its own file — both are
-# correct, this isn't a race condition since the product spec fixes the value.
+# correct, this isn't a race condition since the PRP fixes the value.
 CONFIDENCE_THRESHOLD = 0.75
 
 SubmitApprovalFn = Callable[..., Awaitable[Any]]
@@ -145,7 +145,7 @@ async def write_post(
 
     confidence >= CONFIDENCE_THRESHOLD: queued for human approval via
     submit_for_approval (never executed here — approval and execution are
-    the the safety module's and a human's job, respectively).
+    the safety-agent's and a human's job, respectively).
     confidence < CONFIDENCE_THRESHOLD: flagged needs_human_rewrite, no
     approval submission at all — a different path from the approval queue.
     """

@@ -14,7 +14,7 @@ def _utcnow() -> datetime:
 class FeedbackRecord(Base):
     """One row per feedback signal on a runtime agent's output.
 
-    product spec self-learning scope names two signal families: "User
+    INITIAL.md SELF-LEARNING SCOPE names two signal families: "User
     approve/reject/edit actions on drafts" (signal_type "approved" |
     "rejected" | "edited") and "actual engagement metrics measured 7 days
     post-publish" (signal_type "engagement_outcome", with the metrics in

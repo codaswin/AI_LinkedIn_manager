@@ -26,7 +26,7 @@ _spend_by_day: dict[str, float] = defaultdict(float)
 class CostBudgetExceededError(RuntimeError):
     """Raised to hard-stop further LLM calls once the daily budget is reached.
 
-    WHY this hard-stops instead of logging a warning: project rules's Forbidden
+    WHY this hard-stops instead of logging a warning: CLAUDE.md's Forbidden
     list explicitly calls out "cost caps implemented as warnings instead of
     hard stops" as a defect that must escalate immediately. A cap that only
     logs still lets the system spend past the configured daily limit; raising
