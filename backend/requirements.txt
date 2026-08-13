@@ -19,6 +19,16 @@ redis==8.1.0
 # HTTP (research-source tools: Hacker News, Reddit, GitHub, Product Hunt, web search)
 httpx==0.28.1
 
+# Serving layer
+fastapi==0.141.1
+uvicorn==0.52.2
+
+# Live LLM client (llmops/anthropic_client.py)
+anthropic==0.121.0
+
+# Self-learning loop scheduler (learning/scheduler.py)
+APScheduler==3.11.3
+
 # RSS/Atom parsing (research-source tool: search_rss)
 feedparser==6.0.14
 

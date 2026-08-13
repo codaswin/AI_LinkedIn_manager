@@ -3,7 +3,7 @@
 > A multi-agent system that manages a professional's LinkedIn presence end-to-end — drafting on-brand posts, engaging with the feed, replying to comments and DMs, tracking connections, reporting on performance, and researching AI/agentic-AI developments across six independent sources — with every public, irreversible, or third-party-contacting action gated behind explicit human approval. No exceptions, verified by test.
 
 <p align="center">
-  <em>5 runtime agents · 19 tools (6 require human approval) · 6 research sources · 353 tests · 88.5% coverage</em>
+  <em>5 runtime agents · 19 tools (6 require human approval) · 6 research sources · 399 tests · 88.7% coverage</em>
 </p>
 
 ---
@@ -28,9 +28,10 @@
 16. [Model Routing & Cost Controls](#model-routing--cost-controls)
 17. [Environment Variables](#environment-variables)
 18. [Getting Started](#getting-started)
-19. [Testing & Validation Gates](#testing--validation-gates)
-20. [Roadmap](#roadmap)
-21. [How This Was Built](#how-this-was-built)
+19. [Dashboard (Frontend)](#dashboard-frontend)
+20. [Testing & Validation Gates](#testing--validation-gates)
+21. [Roadmap](#roadmap)
+22. [How This Was Built](#how-this-was-built)
 
 ---
 
@@ -60,7 +61,7 @@ Four decisions shape everything else in this repo:
 
 **3. Self-improvement is reviewed, never silent.** The learning loop can auto-apply a retrieval-weight tweak or an additive few-shot example on its own. It can **never** auto-apply a change to a system prompt, the brand-voice profile, a new tool, an approval-gating rule, or a confidence threshold — regardless of how confident the reflection job's own analysis is. That's enforced in code (`proposal_review.submit_proposal()`), not just policy.
 
-**4. Every agent is testable without a live model.** No live LLM API integration exists anywhere in this codebase yet — every agent function takes an injectable `llm_client` and every single one of the 353 tests runs against a fake. This was a deliberate sequencing choice: build and prove the harness, the safety gates, and the eval/learning infrastructure first, wire in a real model last.
+**4. Every agent is testable without a live model — even now that a live one exists.** Every agent function takes an injectable `llm_client`, and every one of this repo's tests still runs against a fake; the one real implementation (`model_router.route_and_call`, wired to Anthropic for primary/cheap and Hermes/vLLM for the worker tier) is itself just another value that fits the same `llm_client` slot. That was a deliberate sequencing choice: build and prove the harness, the safety gates, and the eval/learning infrastructure first — against fakes — and only then wire in a real model, so "real" never means "suddenly untestable."
 
 ---
 
@@ -550,13 +551,15 @@ Being upfront: a plain `README.md` rendered on GitHub can't run real animation �
 | Inference (primary) | Anthropic Claude | Hosted, strong generation quality |
 | Inference (worker) | Hermes via vLLM (self-hosted, optional) | Cheap/fast for high-volume triage |
 | RAG | FAISS | No KG layer for MVP |
-| Serving | FastAPI | *(not yet wired up — see [Roadmap](#roadmap))* |
+| Serving | FastAPI (`app/main.py`) | Settings, approval queue, learning queue, cost, health |
+| Frontend | React + Vite + TypeScript (`frontend/`) | One view per API resource, no framework/state-library overhead needed at this size |
+| Scheduling | APScheduler | Weekly reflection-job trigger, wired into the app's startup lifespan |
 | Persistence | Postgres + Redis + FAISS | Episodic / working / semantic split |
 | LinkedIn integration | Composio | Auth, token refresh, low-level rate limits offloaded |
 | X integration | Composio, read-only scope | Optional research source only |
 | Web search | `ddgs` (DuckDuckGo) | No API key, swappable via `WebSearchProvider` interface |
 | RSS parsing | `feedparser` | Handles RSS 2.0 / Atom / RDF dialect variance |
-| Testing | pytest + pytest-asyncio + pytest-cov | 353 tests, 88.5% coverage |
+| Testing | pytest + pytest-asyncio + pytest-cov | 399 tests, 88.7% coverage |
 
 ---
 
@@ -565,6 +568,7 @@ Being upfront: a plain `README.md` rendered on GitHub can't run real animation �
 ```
 backend/
 ├── app/
+│   ├── main.py               # FastAPI app — settings/approvals/learning-queue/cost/health
 │   ├── agents/              # The 5 runtime agents + research_pipeline/sources/schema
 │   ├── harness/              # run_step() — the sole LLM choke point, state machine, stopping conditions
 │   ├── tools/                 # 19 registered tools + sandbox + rate limiting + Composio client
@@ -572,14 +576,20 @@ backend/
 │   ├── rag/                   # ingestion + retrieval (shared FAISS VectorStore)
 │   ├── context/                # token-budget assembly + compaction
 │   ├── safety/                 # guardrails, approval gate, kill switch, cost cap, audit CLI
-│   ├── llmops/                  # model router, prompt registry, cost tracker, tracer
-│   ├── learning/                 # feedback capture, reflection job, proposal review queue
+│   ├── llmops/                  # model router (+ live route_and_call), anthropic/hermes clients, tracer
+│   ├── learning/                 # feedback capture, reflection job, proposal review queue, scheduler
 │   └── models/                    # SQLAlchemy models (approvals, feedback, proposals, settings, episodes)
 ├── evals/                    # golden sets, metrics, LLM judge, regression-gate runner
-└── tests/                    # 300+ tests for everything above
-```
+└── tests/                    # 350+ tests for everything above
 
-*(`main.py`/FastAPI serving layer is intentionally not yet built — see [Roadmap](#roadmap).)*
+frontend/
+├── src/
+│   ├── api.ts                # typed fetch client for every backend endpoint
+│   ├── types.ts               # response shapes, mirrors backend/app/main.py exactly
+│   ├── ActorProvider.tsx       # persisted "acting as" identity for approve/reject calls
+│   └── views/                   # ApprovalQueueView, LearningProposalsView, SettingsView, CostView
+└── README.md                 # frontend-specific setup/build docs
+```
 
 ---
 
@@ -660,9 +670,50 @@ pytest backend/tests backend/evals -v
 
 # run the safety audit
 python -m app.safety.audit
+
+# run the API server
+uvicorn app.main:app --reload
+# → http://localhost:8000/docs for interactive API docs (settings, approval
+#   queue, learning-proposal queue, cost summary, health)
 ```
 
-Hacker News, RSS, and DuckDuckGo web search work with **zero configuration**. Reddit, GitHub, and Product Hunt need the credentials above (GitHub works unauthenticated too, just at a lower rate limit).
+Hacker News, RSS, and DuckDuckGo web search work with **zero configuration**. Reddit, GitHub, and Product Hunt need the credentials above (GitHub works unauthenticated too, just at a lower rate limit). Without `ANTHROPIC_API_KEY` set, agents still run in tests (against fakes) but any endpoint that triggers a real model call (e.g. `/learning/reflect`) will fail loudly rather than pretend to succeed.
+
+---
+
+## Dashboard (Frontend)
+
+A React + Vite + TypeScript single-page dashboard (`frontend/`) — one view per existing API resource, no component framework, no state-management library, no router. It's a review-and-decide tool, not a complex app, so `useState` and four view components cover it.
+
+```mermaid
+flowchart LR
+    subgraph FE["frontend/ — Vite dev server, localhost:5173"]
+        AQ["Approval Queue view"]
+        SL["Self-Learning view"]
+        ST["Settings view"]
+        CO["Cost view"]
+    end
+    API["FastAPI — localhost:8000<br/>CORS-enabled for the dashboard's origin"]
+    AQ & SL & ST & CO -->|fetch, JSON| API
+    style API fill:#0891b2,color:#fff
+```
+
+| View | Backend resource | What you can do |
+|------|-------------------|-------------------|
+| **Approval Queue** | `/approvals/*` | See every pending gated action with full argument content shown (never a bare post ID) — approve or reject |
+| **Self-Learning** | `/learning/proposals/*`, `/learning/reflect` | Review reflection-job proposals (flagged clearly when a type can never auto-apply), trigger an on-demand reflection run |
+| **Settings** | `/settings/{key}` | View/edit agent settings like `research_agent.poll_interval` |
+| **Cost** | `/cost` | Today's LLM spend vs. the daily cap, as a progress bar |
+
+Every action carries a `decided_by` identity, set via the "Acting as" field in the header (persisted to `localStorage`) — the same audit trail `approval_gate.approve()`/`reject()` and `proposal_review.approve_proposal()`/`reject_proposal()` already record for every decision, human or otherwise.
+
+```bash
+cd frontend
+npm install
+npm run dev   # → http://localhost:5173
+```
+
+Requires the backend running separately (see [Getting Started](#getting-started)) with CORS allowing the dashboard's origin — `CORS_ALLOWED_ORIGINS` in `.env.example` already defaults to Vite's dev-server ports. Full setup/build details: `frontend/README.md`.
 
 ---
 
@@ -686,7 +737,7 @@ pytest backend/tests backend/evals --cov=backend/app --cov=backend/evals --cov-f
 python -m app.safety.audit
 ```
 
-Current state: **353 tests passing, 88.5% coverage**, ruff/mypy clean, safety audit green.
+Current state: **399 tests passing, 88.7% coverage**, ruff/mypy clean, safety audit green.
 
 ---
 
@@ -699,14 +750,16 @@ Current state: **353 tests passing, 88.5% coverage**, ruff/mypy clean, safety au
 - [x] Multi-source Research Agent (6 sources, X optional)
 - [x] Eval harness with regression gate
 - [x] Self-learning loop with hard human-review lines
+- [x] FastAPI serving layer (`main.py`) — settings, approval queue, learning-proposal queue, cost, health, all over the same tested infrastructure above
+- [x] Self-learning loop running on an actual schedule (`learning/scheduler.py`, APScheduler, weekly by default, wired into the app's startup lifespan)
+- [x] A real live LLM client (`model_router.route_and_call`) — Anthropic for primary/cheap tiers, Hermes/vLLM (OpenAI-compatible) for the worker tier, both via a forced structured tool-call so every existing agent's response-parsing contract is untouched
+- [x] Dashboard UI for the approval queue, self-learning queue, agent settings, and cost (`frontend/`, React + Vite)
 
 **Explicitly post-MVP (per the original spec):**
-- [ ] Dashboard UI for live agent-cadence control (e.g. Research Agent poll interval)
-- [ ] Self-learning loop running on an actual schedule (code exists; no cron/Celery beat wired up)
 - [ ] Connection-relationship knowledge graph
 - [ ] Analytics-driven auto-scheduling
-- [ ] A real live LLM client (`model_router.route_and_call`) — every agent is fully built and tested against injectable fakes, ready for this to be the very last wire pulled
-- [ ] FastAPI serving layer / `main.py`
+
+**Known limitation carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (every agent calls `tools.registry.execute_tool()` directly, outside the harness loop), so wiring the harness's own tool-calling path was left for whichever agent first needs it rather than built speculatively. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
 
 ---
 
@@ -716,6 +769,7 @@ This system was built PRP-style: a detailed spec (`INITIAL.md`) generated a full
 
 ```
 Phase 1 (Foundation) → Phase 2 (5 runtime agents + safety) → Phase 3 (evals + self-learning)
+  → Phase 4 (FastAPI serving layer + scheduled learning loop) → Phase 5 (live LLM client)
 ```
 
 Each phase's validation gate had to pass before the next started. Every non-trivial design decision in this codebase — why X is optional, why deletion has no confidence bypass, why `system_prompt` changes can never auto-apply — traces back to an explicit requirement in that original spec, not an implementation afterthought.

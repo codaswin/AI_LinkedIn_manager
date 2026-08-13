@@ -9,13 +9,38 @@ never construct or hardcode one itself.
 route() is called BY the harness's run_step() — it never calls an LLM API on
 its own initiative, and no tool or agent may call an LLM directly, bypassing
 the harness (CLAUDE.md non-negotiable #1).
+
+route_and_call() (bottom of this file) is the first real, live-model
+implementation of the `llm_client` callable every agent already accepts —
+everything through Phase 3 only ever ran against injectable fakes
+(harness/loop.py's own docstring: "does not talk to a real model yet").
+Passing `route_and_call` as `llm_client` anywhere `run_step()` is invoked is
+what turns this from a fully-tested scaffold into a live system.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+import structlog
+from app.context.assembler import assemble_context
+from app.context.budget import get_budget, register_tier_budget
+from app.harness.loop import ToolCallRequest
+from app.llmops import cost_tracker, tracer
+from app.llmops.anthropic_client import call_anthropic
+from app.llmops.hermes_client import call_hermes
+from app.llmops.prompt_registry import get_prompt
+
+if TYPE_CHECKING:
+    from app.harness.loop import AgentRunConfig
+    from app.harness.state import AgentState
+
+logger = structlog.get_logger(__name__)
 
 
 class ModelTier(str, Enum):
@@ -118,3 +143,170 @@ def route(agent: str, step: str) -> ModelConfig:
 def registered_steps() -> list[tuple[str, str]]:
     """All (agent, step) pairs currently routable. Used by tests/audits."""
     return list(_ROUTING_TABLE.keys())
+
+
+# ---------------------------------------------------------------------------
+# Token budgets — context.budget owns the *mechanism* (register_tier_budget /
+# get_budget), model_router owns the *numbers*, since a tier's usable context
+# window is model config (CLAUDE.md: no hardcoded model config outside this
+# file). Env-overridable so a different model's real window doesn't need a
+# code change.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_TIER_BUDGET_TOKENS: dict[str, int] = {
+    ModelTier.PRIMARY.value: 150_000,
+    ModelTier.CHEAP.value: 150_000,
+    ModelTier.WORKER.value: 24_000,
+}
+
+
+def _register_default_tier_budgets() -> None:
+    for tier_value, default_tokens in _DEFAULT_TIER_BUDGET_TOKENS.items():
+        env_var = f"CONTEXT_BUDGET_{tier_value.upper()}_TOKENS"
+        tokens = int(os.environ.get(env_var, default_tokens))
+        register_tier_budget(tier_value, tokens)
+
+
+# Deliberately NOT called once at import time: context.budget.TIER_BUDGETS is
+# a shared global dict, and other modules' own tests (context/budget.py's)
+# legitimately clear it to test registration/lookup in isolation. Calling
+# this at the top of every route_and_call() instead — cheap (a few dict
+# writes) and makes correctness independent of what any other test or module
+# has done to that global since this process started.
+
+
+# ---------------------------------------------------------------------------
+# Pricing — $ per 1,000 tokens. These are PLACEHOLDER DEFAULTS, not verified
+# real provider pricing (this project's default model names —
+# "claude-sonnet-5", "claude-haiku-4-5" — are themselves placeholders; see
+# _DEFAULT_ANTHROPIC_MODEL_* above). Override every one of these via env var
+# with your actual plan's real per-token price before trusting cost_cap's
+# $/day enforcement for anything real. Hermes defaults to $0 since it's
+# self-hosted — no per-token API charge, only infra cost this module doesn't
+# track.
+# ---------------------------------------------------------------------------
+
+
+def _price_per_1k(env_var: str, default: float) -> float:
+    raw = os.environ.get(env_var)
+    return float(raw) if raw else default
+
+
+@dataclass
+class RouteAndCallResponse:
+    """Satisfies harness.loop.LLMResponse's Protocol shape — the same
+
+    (text, tool_calls, cost_usd, confidence, goal_achieved) attributes every
+    FakeLLMResponse in this codebase's test suite already provides.
+    """
+
+    text: str
+    tool_calls: list[ToolCallRequest] = field(default_factory=list)
+    cost_usd: float = 0.0
+    confidence: float | None = None
+    goal_achieved: bool = False
+
+
+def _build_user_content(state: AgentState, budget_tokens: int) -> str:
+    """Assembles one call's user-turn content via context.assembler, honoring
+
+    the priority order (current_task > rag_context > older_conversation)
+    and the tier's token budget. system_prompt/safety_rules are NOT part of
+    this — they go through Anthropic's/OpenAI's dedicated `system` field
+    instead (mandatory-tier handling per assembler.py is for the case where
+    a caller wants system content folded into one blob; here the provider
+    APIs already give us a first-class, never-truncated system channel, so
+    using it directly is strictly better than routing system_prompt through
+    assemble_context just to reassemble it here).
+    """
+    components: dict[str, object] = {"current_task": state.current_task}
+    if state.scratchpad:
+        components["rag_context"] = json.dumps(state.scratchpad, default=str, sort_keys=True)
+    if state.conversation:
+        components["older_conversation"] = "\n".join(
+            f"[{turn.get('role', '?')}] {turn.get('content', '')}" for turn in state.conversation
+        )
+    blocks = assemble_context(components, budget_tokens)
+    return "\n\n".join(f"### {block['label']}\n{block['content']}" for block in blocks)
+
+
+async def route_and_call(*, state: AgentState, config: AgentRunConfig) -> RouteAndCallResponse:
+    """The live `llm_client` implementation — pass this wherever run_step()
+
+    needs a real model instead of a test fake. Every step CLAUDE.md rule #1
+    requires happens here, in order: budget check before the call, the call
+    itself, cost recording, and tracing — all before returning.
+
+    Known limitation: `tool_calls` is always []. No runtime agent built in
+    this codebase ever passes a non-None `tool_executor` to run_step() (every
+    agent calls tools.registry.execute_tool() directly, outside the harness
+    loop) — wiring the harness's own tool-calling path is future work for
+    whichever agent first needs it, not invented here speculatively.
+    """
+    _register_default_tier_budgets()
+    cost_tracker.check_budget()
+
+    model_config = route(config.agent_name, config.task_type)
+    system_prompt = get_prompt(config.agent_name)
+    budget_tokens = get_budget(model_config.tier.value)
+    user_content = _build_user_content(state, budget_tokens)
+
+    start = time.perf_counter()
+    if model_config.provider is ModelProvider.HERMES:
+        if model_config.endpoint is None:
+            raise ValueError(f"Hermes tier resolved with no endpoint configured: {model_config!r}")
+        hermes_result = await call_hermes(
+            endpoint=model_config.endpoint,
+            model=model_config.model,
+            system_prompt=system_prompt,
+            user_content=user_content,
+        )
+        result_text, result_confidence, result_goal_achieved = (
+            hermes_result.text,
+            hermes_result.confidence,
+            hermes_result.goal_achieved,
+        )
+        input_tokens, output_tokens = hermes_result.input_tokens, hermes_result.output_tokens
+        price_in = _price_per_1k("HERMES_PRICE_IN_PER_1K", 0.0)
+        price_out = _price_per_1k("HERMES_PRICE_OUT_PER_1K", 0.0)
+    else:
+        anthropic_result = await call_anthropic(
+            model=model_config.model, system_prompt=system_prompt, user_content=user_content
+        )
+        result_text, result_confidence, result_goal_achieved = (
+            anthropic_result.text,
+            anthropic_result.confidence,
+            anthropic_result.goal_achieved,
+        )
+        input_tokens, output_tokens = anthropic_result.input_tokens, anthropic_result.output_tokens
+        if model_config.tier is ModelTier.PRIMARY:
+            price_in = _price_per_1k("ANTHROPIC_PRICE_PRIMARY_IN_PER_1K", 0.003)
+            price_out = _price_per_1k("ANTHROPIC_PRICE_PRIMARY_OUT_PER_1K", 0.015)
+        else:
+            price_in = _price_per_1k("ANTHROPIC_PRICE_CHEAP_IN_PER_1K", 0.0008)
+            price_out = _price_per_1k("ANTHROPIC_PRICE_CHEAP_OUT_PER_1K", 0.004)
+
+    latency_ms = (time.perf_counter() - start) * 1000
+    cost_usd = (input_tokens / 1000 * price_in) + (output_tokens / 1000 * price_out)
+    cost_tracker.record_cost(cost_usd)
+
+    tracer.trace_llm_call(
+        agent=config.agent_name,
+        step=config.task_type,
+        model=model_config.model,
+        provider=model_config.provider.value,
+        latency_ms=latency_ms,
+        cost_usd=cost_usd,
+        inputs={"system_prompt_chars": len(system_prompt), "user_content_chars": len(user_content)},
+        outputs={"text_chars": len(result_text), "goal_achieved": result_goal_achieved},
+        tokens_in=input_tokens,
+        tokens_out=output_tokens,
+    )
+
+    return RouteAndCallResponse(
+        text=result_text,
+        tool_calls=[],
+        cost_usd=cost_usd,
+        confidence=result_confidence,
+        goal_achieved=result_goal_achieved,
+    )

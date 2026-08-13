@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI LinkedIn Manager — Dashboard</title>
+    <script>
+      // Applied before first paint so there's no flash of the wrong theme —
+      // ThemeProvider (src/ThemeProvider.tsx) takes over from here once React
+      // mounts, using the same storage key and fallback logic.
+      (function () {
+        var stored = localStorage.getItem("ai-linkedin-manager.theme");
+        var theme = stored === "light" || stored === "dark"
+          ? stored
+          : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
