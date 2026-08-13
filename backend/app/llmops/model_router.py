@@ -71,6 +71,15 @@ _ROUTING_TABLE: dict[tuple[str, str], ModelTier] = {
     ("research", "triage"): ModelTier.WORKER,
     # Research Agent — final research-note/digest write-up (primary tier).
     ("research", "digest"): ModelTier.PRIMARY,
+    # Research Agent — multi-source synthesis into one ResearchPackage (primary tier).
+    ("research", "synthesize"): ModelTier.PRIMARY,
+    # Eval harness — LLM-as-judge scoring of drafts against the golden set. Primary
+    # tier: judge quality directly gates ship/no-ship regression decisions.
+    ("evals", "judge"): ModelTier.PRIMARY,
+    # Learning loop — periodic reflection over recent feedback to propose changes.
+    # Primary tier: infrequent (weekly-ish), so cost impact is negligible, but a
+    # bad reflection produces bad proposals even though a human still reviews them.
+    ("learning", "reflect"): ModelTier.PRIMARY,
 }
 
 

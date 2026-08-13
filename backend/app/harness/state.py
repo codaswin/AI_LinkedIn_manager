@@ -16,13 +16,23 @@ from pydantic import BaseModel, Field
 
 
 class RuntimeAgentName(str, Enum):
-    """The 5 runtime agents defined in the PRP's RUNTIME AGENTS section."""
+    """The 5 runtime agents from the PRP's RUNTIME AGENTS section, plus the
+
+    two Phase 3 quality/self-improvement processes (eval-agent's LLM judge,
+    learning-agent's reflection job). Neither EVALS nor LEARNING is a
+    "runtime agent" in the PRP sense — they don't act on the user's
+    LinkedIn/X — but CLAUDE.md rule #1 ("every LLM call goes through
+    run_step()") is unconditional, so both need an AgentState/agent_name
+    just like the 5 runtime agents do.
+    """
 
     CONTENT_STRATEGIST = "content_strategist"
     CONTENT_WRITER = "content_writer"
     ENGAGEMENT = "engagement"
     ANALYTICS_REPORTING = "analytics"  # matches model_router._ROUTING_TABLE's ("analytics", ...) keys
     RESEARCH = "research"
+    EVALS = "evals"
+    LEARNING = "learning"
 
 
 class StopReason(str, Enum):

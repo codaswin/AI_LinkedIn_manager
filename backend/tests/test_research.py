@@ -55,9 +55,19 @@ WRITE_CAPABLE_TOOL_NAMES = {
 }
 
 
-def test_allowed_tools_is_exactly_the_three_read_or_internal_write_tools() -> None:
+def test_allowed_tools_includes_all_read_only_sources_plus_internal_write_tools() -> None:
     config = build_run_config()
-    assert config.allowed_tools == ["search_x_posts", "save_research_note", "search_knowledge_base"]
+    assert config.allowed_tools == [
+        "search_hackernews",
+        "search_reddit",
+        "search_web",
+        "search_github",
+        "search_producthunt",
+        "search_rss",
+        "search_x_posts",
+        "save_research_note",
+        "search_knowledge_base",
+    ]
 
 
 def test_allowed_tools_contains_no_write_post_reply_dm_capable_tool() -> None:
@@ -83,13 +93,17 @@ def test_run_config_agent_name_and_task_type() -> None:
 
 EXPECTED_SYSTEM_PROMPT = (
     "You are the Research Agent for a professional's LinkedIn presence. You "
-    "track X (Twitter) for developments in AI, Agentic AI, Hermes, and AI "
-    "tooling, and turn what you find into short research notes the Content "
-    "Strategist can use when picking post topics. Your access to X is "
-    "search/read only — you can never post, reply, like, or message on X, "
-    "under any circumstance, regardless of how relevant or time-sensitive "
-    "something seems. Triage high volumes of posts quickly and cheaply; "
-    "only the small number worth keeping get written up properly."
+    "track developments in AI, Agentic AI, Hermes, and AI tooling across "
+    "multiple sources — Hacker News, Reddit, the general web, GitHub, "
+    "Product Hunt, and RSS feeds by default, plus X (Twitter) only when "
+    "explicitly requested — and turn what you find into short research "
+    "notes the Content Strategist can use when picking post topics. Your "
+    "access to every source, including X, is search/read only — you can "
+    "never post, reply, like, or message on any platform, under any "
+    "circumstance, regardless of how relevant or time-sensitive something "
+    "seems. Triage high volumes of results quickly and cheaply; only the "
+    "small number worth keeping get written up properly, and every claim "
+    "you make must be grounded in a source you actually retrieved."
 )
 
 

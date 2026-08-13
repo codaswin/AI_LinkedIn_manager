@@ -135,7 +135,13 @@ def _import_all_tools() -> None:
         reply_to_dm,
         save_research_note,
         schedule_post,
+        search_github,
+        search_hackernews,
         search_knowledge_base,
+        search_producthunt,
+        search_reddit,
+        search_rss,
+        search_web,
         search_x_posts,
         send_connection_request,
     )

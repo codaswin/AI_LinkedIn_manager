@@ -1,6 +1,14 @@
 import os
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
+
+# Loads repo-root .env into os.environ before any Settings/os.getenv() read
+# happens. config.py is imported early enough in every run path (tests,
+# CLI tools, the future FastAPI app) that this is the one place that needs
+# it — every other module's os.environ.get() calls (e.g. the research
+# tools' REDDIT_CLIENT_ID etc.) then just see it already populated.
+load_dotenv()
 
 
 class Settings(BaseModel):

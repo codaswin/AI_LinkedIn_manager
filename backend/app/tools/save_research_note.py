@@ -34,7 +34,7 @@ async def execute(args: SaveResearchNoteArgs) -> dict[str, t.Any]:
         "id": note_id,
         "content": args.content,
         "source_url": str(args.source_url),
-        "source": "research_agent.search_x_posts",
+        "source": "research_agent",
         "confidence": 1.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

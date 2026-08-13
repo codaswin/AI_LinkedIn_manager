@@ -1,0 +1,32 @@
+# Core
+pydantic==2.13.4
+structlog==26.1.0
+python-dotenv==1.2.2
+
+# Harness / agents / LLM integration
+composio==0.19.0
+
+# RAG / memory
+faiss-cpu==1.15.0
+numpy==2.5.2
+
+# Persistence
+SQLAlchemy==2.0.52
+asyncpg==0.31.0
+aiosqlite==0.22.1
+redis==8.1.0
+
+# HTTP (research-source tools: Hacker News, Reddit, GitHub, Product Hunt, web search)
+httpx==0.28.1
+
+# RSS/Atom parsing (research-source tool: search_rss)
+feedparser==6.0.14
+
+# DuckDuckGo web search, no API key required (research-source tool: search_web)
+ddgs==9.14.4
+
+# Test tooling
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+fakeredis==2.37.0

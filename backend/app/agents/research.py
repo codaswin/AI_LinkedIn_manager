@@ -1,17 +1,20 @@
-"""Research Agent — tracks X (Twitter) for AI/Agentic AI/Hermes/tooling news.
+"""Research Agent — modular multi-source research over AI/Agentic AI/Hermes/tooling news.
 
-PRP RUNTIME AGENTS #5: turns high-volume X search results into a small
-number of research notes the Content Strategist can ground post topics in.
-This agent's access to X is READ-ONLY, full stop (PRP SAFETY REQUIREMENTS,
-CLAUDE.md hard project rule for this build): it only ever calls
-`search_x_posts`, never anything that posts/replies/likes/DMs on X, and
+PRP RUNTIME AGENTS #5: turns high-volume source results into a small number
+of research notes/packages the Content Strategist can ground post topics in.
+Originally X (Twitter)-only; X's API cost made it worth de-risking, so
+research now defaults to six API-key-light/free sources (Hacker News,
+Reddit, web search, GitHub, Product Hunt, RSS — see research_sources.py and
+research_pipeline.py) with X kept only as an explicit, opt-in extra source,
+never the default. Every source this agent can reach is READ-ONLY, full
+stop (PRP SAFETY REQUIREMENTS, CLAUDE.md hard project rule for this build):
 `ALLOWED_TOOLS` below must never grow a write-capable tool name.
 
 CLAUDE.md non-negotiable #1: this module never calls an LLM client directly.
-Both the cheap/worker triage step and the primary digest step go through
-harness.loop.run_step, the sole choke point for LLM calls — triage simply
-uses its own AgentRunConfig pinned to the worker tier instead of the
-module's primary-tier config.
+The cheap/worker X-triage step, the primary research-note digest step, and
+research_pipeline's multi-source synthesis step all go through
+harness.loop.run_step, the sole choke point for LLM calls — each simply
+uses its own AgentRunConfig pinned to the tier that step needs.
 """
 
 from __future__ import annotations
@@ -21,6 +24,17 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
+from app.agents.research_pipeline import (
+    conduct_research,  # noqa: F401 — re-exported public entrypoint
+    research,  # noqa: F401 — re-exported public entrypoint
+)
+from app.agents.research_sources import (
+    research_github,  # noqa: F401 — re-exported public entrypoint
+    research_hackernews,  # noqa: F401 — re-exported public entrypoint
+    research_producthunt,  # noqa: F401 — re-exported public entrypoint
+    research_reddit,  # noqa: F401 — re-exported public entrypoint
+    research_rss,  # noqa: F401 — re-exported public entrypoint
+)
 from app.harness.loop import AgentRunConfig, LLMClient, run_step
 from app.harness.state import AgentState, RuntimeAgentName
 from app.llmops.model_router import route
@@ -33,20 +47,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 SYSTEM_PROMPT = (
     "You are the Research Agent for a professional's LinkedIn presence. You "
-    "track X (Twitter) for developments in AI, Agentic AI, Hermes, and AI "
-    "tooling, and turn what you find into short research notes the Content "
-    "Strategist can use when picking post topics. Your access to X is "
-    "search/read only — you can never post, reply, like, or message on X, "
-    "under any circumstance, regardless of how relevant or time-sensitive "
-    "something seems. Triage high volumes of posts quickly and cheaply; "
-    "only the small number worth keeping get written up properly."
+    "track developments in AI, Agentic AI, Hermes, and AI tooling across "
+    "multiple sources — Hacker News, Reddit, the general web, GitHub, "
+    "Product Hunt, and RSS feeds by default, plus X (Twitter) only when "
+    "explicitly requested — and turn what you find into short research "
+    "notes the Content Strategist can use when picking post topics. Your "
+    "access to every source, including X, is search/read only — you can "
+    "never post, reply, like, or message on any platform, under any "
+    "circumstance, regardless of how relevant or time-sensitive something "
+    "seems. Triage high volumes of results quickly and cheaply; only the "
+    "small number worth keeping get written up properly, and every claim "
+    "you make must be grounded in a source you actually retrieved."
 )
 
 register_prompt("research", SYSTEM_PROMPT)
 
-# Hard project rule: this agent is read-only on X. No write/post/reply/DM
-# tool name may ever be added here — test_research.py asserts that.
-ALLOWED_TOOLS = ["search_x_posts", "save_research_note", "search_knowledge_base"]
+# Hard project rule: this agent is read-only everywhere. No write/post/
+# reply/DM tool name may ever be added here — test_research.py asserts that.
+# "x" (search_x_posts) is included so an explicit, caller-requested X source
+# stays gated by the same allowed_tools mechanism as everything else, not
+# because X is a default source (see research_sources.SOURCE_ADAPTERS /
+# DEFAULT_SOURCES, where "x" is deliberately absent).
+ALLOWED_TOOLS = [
+    "search_hackernews",
+    "search_reddit",
+    "search_web",
+    "search_github",
+    "search_producthunt",
+    "search_rss",
+    "search_x_posts",
+    "save_research_note",
+    "search_knowledge_base",
+]
 
 _POLL_INTERVAL_KEY = "research_agent.poll_interval"
 

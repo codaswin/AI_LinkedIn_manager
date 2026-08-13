@@ -31,6 +31,12 @@ ALL_TOOL_NAMES = {
     "reply_to_comment",
     "reply_to_dm",
     "send_connection_request",
+    "search_hackernews",
+    "search_reddit",
+    "search_web",
+    "search_github",
+    "search_producthunt",
+    "search_rss",
 }
 
 APPROVAL_REQUIRED_TOOL_NAMES = {
@@ -59,10 +65,10 @@ FORBIDDEN_X_SLUG_TOKENS = (
 )
 
 
-def test_all_13_tools_registered() -> None:
+def test_all_19_tools_registered() -> None:
     registered = set(registry.all().keys())
     assert registered == ALL_TOOL_NAMES
-    assert len(registered) == 13
+    assert len(registered) == 19
 
 
 def test_every_tool_has_a_pydantic_schema() -> None:
