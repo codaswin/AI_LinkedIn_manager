@@ -95,7 +95,7 @@ def check_cost_cap_hard_stop() -> list[str]:
 
     Does not duplicate llmops' own test suite — just proves, in this
     process, that going over budget raises rather than merely logging.
-    Manipulates and then resets cost_tracker's in-memory spend; safe because
+    Manipulates and then resets the audit-specific Redis cost key; safe because
     audit.py runs as a short-lived standalone process.
     """
     errors: list[str] = []

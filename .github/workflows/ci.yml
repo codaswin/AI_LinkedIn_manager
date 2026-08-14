@@ -7,6 +7,16 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -23,6 +33,7 @@ jobs:
       - name: Tests and safety audit
         env:
           CREDENTIAL_ENCRYPTION_KEY: "TTnYEol6gSAAV6xIIUrsEtNVJw7m7yTAZCICTaiQHC8="
+          REDIS_URL: redis://localhost:6379/0
         run: |
           python -m pytest backend/tests backend/evals --cov=backend/app --cov=backend/evals --cov-fail-under=80
           PYTHONPATH=backend python -m app.tools.registry --validate-all-schemas

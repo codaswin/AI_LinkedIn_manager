@@ -161,3 +161,5 @@ dist/
 build/
 
 .local
+
+/check/
