@@ -13,7 +13,7 @@ React + Vite + TypeScript frontend for the [AI LinkedIn Manager](../README.md) b
 
 ```bash
 npm install
-cp .env.example .env   # only needed if the backend isn't on http://localhost:8000
+cp .env.example .env   # only needed if the backend isn't on http://localhost:8010
 npm run dev
 ```
 

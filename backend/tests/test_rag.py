@@ -184,3 +184,19 @@ class TestIngestIdempotency:
 
         store = VectorStore(index_path)
         assert store.count() == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_ingests_do_not_lose_updates(tmp_path):
+    import asyncio
+
+    index_path = str(tmp_path)
+    await asyncio.gather(*(
+        ingest_post(f"concurrent-{i}", f"Concurrent post number {i}", index_path=index_path)
+        for i in range(20)
+    ))
+    store = VectorStore(index_path)
+    assert store.count() == 20
+    generation = (tmp_path / "CURRENT").read_text().strip()
+    assert (tmp_path / f"index.{generation}.faiss").exists()
+    assert (tmp_path / f"store.{generation}.json").exists()

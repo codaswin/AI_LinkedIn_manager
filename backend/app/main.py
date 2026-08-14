@@ -46,9 +46,20 @@ from app.safety.approval_gate import (
     ApprovalRequestNotFoundError,
     SystemPausedError,
 )
-from app.safety.api_auth import is_public_path, require_dashboard_api_key
+from app.safety.api_auth import (
+    authenticate_credentials,
+    authenticate_request,
+    authorize_request,
+    clear_session_cookie,
+    current_user,
+    ensure_bootstrap_admin,
+    is_public_path,
+    revoke_session,
+    rotate_csrf_token,
+    set_session_cookie,
+)
 from app.safety.secrets import CredentialEncryptionError
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
@@ -69,13 +80,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.tools.registry import _import_all_tools
 
     _import_all_tools()
-    await init_models()
+    if os.environ.get("AUTO_CREATE_SCHEMA", "").lower() in {"1", "true", "yes"}:
+        await init_models()
     # Replay anything saved through the Connections page back into
     # os.environ — the DB row is the durable copy, but every credential
     # consumer (anthropic_client, search_reddit, ...) still just reads
     # os.environ, so a restart needs this to not lose what was configured.
     async with get_session_factory()() as session:
         await platform_credentials.load_saved_credentials_into_env(session)
+        await ensure_bootstrap_admin(session)
     start_scheduler()
     logger.info("app_startup_complete")
     yield
@@ -112,12 +125,14 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def _dashboard_api_key_guard(request: Request, call_next):
-    # Disabled unless DASHBOARD_API_KEY is set. When enabled, every non-public
-    # endpoint requires X-Dashboard-API-Key so approval and credential actions
-    # are not exposed by accident in a deployed environment.
-    if not is_public_path(request.url.path):
-        require_dashboard_api_key(request)
+async def _dashboard_session_guard(request: Request, call_next):
+    if request.method.upper() == "OPTIONS" or is_public_path(request.url.path):
+        return await call_next(request)
+    try:
+        user = await authenticate_request(request)
+        authorize_request(request, user)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     return await call_next(request)
 
 
@@ -148,6 +163,43 @@ async def _credential_encryption_error_handler(request: Request, exc: Credential
 async def get_db() -> AsyncIterator[AsyncSession]:
     async for session in get_session():
         yield session
+# ---------------------------------------------------------------------------
+# Dashboard authentication
+# ---------------------------------------------------------------------------
+
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/login")
+async def login(body: LoginBody, request: Request, response: Response) -> dict[str, Any]:
+    async with get_session_factory()() as db:
+        user, session_token, csrf_token = await authenticate_credentials(
+            db,
+            body.username,
+            body.password,
+            request.client.host if request.client else None,
+        )
+    set_session_cookie(response, session_token)
+    return {"user": {"username": user.username, "role": user.role}, "csrf_token": csrf_token}
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request) -> dict[str, Any]:
+    user = current_user(request)
+    csrf_token = await rotate_csrf_token(request)
+    return {"user": {"username": user.username, "role": user.role}, "csrf_token": csrf_token}
+
+
+@app.post("/auth/logout")
+async def logout(request: Request, response: Response) -> dict[str, bool]:
+    await revoke_session(request)
+    clear_session_cookie(response)
+    return {"logged_out": True}
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +225,6 @@ async def read_activity() -> dict[str, Any] | None:
 
 class SettingUpdate(BaseModel):
     value: str
-    updated_by: str
 
 
 @app.get("/settings/{key}")
@@ -185,8 +236,10 @@ async def read_setting(key: str, db: AsyncSession = Depends(get_db)) -> dict[str
 
 
 @app.put("/settings/{key}")
-async def update_setting(key: str, body: SettingUpdate, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    record = await set_setting(db, key, body.value, updated_by=body.updated_by)
+async def update_setting(
+    key: str, body: SettingUpdate, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    record = await set_setting(db, key, body.value, updated_by=current_user(request).username)
     return {"key": record.key, "value": record.value, "updated_by": record.updated_by, "updated_at": record.updated_at}
 
 
@@ -301,20 +354,35 @@ async def clear_credentials(platform_id: str, db: AsyncSession = Depends(get_db)
 
 
 class DecisionBody(BaseModel):
-    decided_by: str
     reason: str | None = None
 
 
 @app.get("/approvals")
 async def list_approvals(db: AsyncSession = Depends(get_db)) -> list[dict[str, Any]]:
-    pending = await approval_gate.list_pending(db)
+    pending = await approval_gate.list_actionable(db)
     return [p.model_dump(mode="json") for p in pending]
 
 
 @app.post("/approvals/{approval_id}/approve")
-async def approve_approval(approval_id: str, body: DecisionBody, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def approve_approval(
+    approval_id: str, body: DecisionBody, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     try:
-        return await approval_gate.approve(db, approval_id, decided_by=body.decided_by)
+        return await approval_gate.approve(db, approval_id, decided_by=current_user(request).username)
+    except SystemPausedError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except ApprovalRequestNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ApprovalRequestAlreadyDecidedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/approvals/{approval_id}/retry")
+async def retry_approval(
+    approval_id: str, body: DecisionBody, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    try:
+        return await approval_gate.retry(db, approval_id, decided_by=current_user(request).username)
     except SystemPausedError as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ApprovalRequestNotFoundError as exc:
@@ -324,9 +392,13 @@ async def approve_approval(approval_id: str, body: DecisionBody, db: AsyncSessio
 
 
 @app.post("/approvals/{approval_id}/reject")
-async def reject_approval(approval_id: str, body: DecisionBody, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def reject_approval(
+    approval_id: str, body: DecisionBody, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     try:
-        record = await approval_gate.reject(db, approval_id, decided_by=body.decided_by, reason=body.reason)
+        record = await approval_gate.reject(
+            db, approval_id, decided_by=current_user(request).username, reason=body.reason
+        )
     except ApprovalRequestNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ApprovalRequestAlreadyDecidedError as exc:
@@ -431,10 +503,12 @@ async def list_learning_proposals(db: AsyncSession = Depends(get_db)) -> list[di
 
 @app.post("/learning/proposals/{proposal_id}/approve")
 async def approve_learning_proposal(
-    proposal_id: str, body: DecisionBody, db: AsyncSession = Depends(get_db)
+    proposal_id: str, body: DecisionBody, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     try:
-        record = await proposal_review.approve_proposal(db, proposal_id, decided_by=body.decided_by)
+        record = await proposal_review.approve_proposal(
+            db, proposal_id, decided_by=current_user(request).username
+        )
     except ProposalNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProposalAlreadyDecidedError as exc:
@@ -444,10 +518,12 @@ async def approve_learning_proposal(
 
 @app.post("/learning/proposals/{proposal_id}/reject")
 async def reject_learning_proposal(
-    proposal_id: str, body: DecisionBody, db: AsyncSession = Depends(get_db)
+    proposal_id: str, body: DecisionBody, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     try:
-        record = await proposal_review.reject_proposal(db, proposal_id, decided_by=body.decided_by, reason=body.reason)
+        record = await proposal_review.reject_proposal(
+            db, proposal_id, decided_by=current_user(request).username, reason=body.reason
+        )
     except ProposalNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProposalAlreadyDecidedError as exc:

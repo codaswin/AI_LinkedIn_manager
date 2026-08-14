@@ -247,25 +247,15 @@ class TestPublishAndSchedulePostSchemas:
         with pytest.raises(ValidationError):
             entry.schema(publish_at=datetime.now(timezone.utc) + timedelta(days=1))
 
-    def test_schedule_post_execute_reports_no_backend_rather_than_a_fake_success(self) -> None:
-        """Composio's LinkedIn toolkit has no scheduling action (verified live —
+    async def test_schedule_post_persists_approved_future_post(self, db_session) -> None:
+        outcome = await registry_module.execute_tool(
+            "schedule_post",
+            {"content": "hello", "publish_at": datetime.now(timezone.utc) + timedelta(days=1)},
+            approved=True,
+        )
+        assert outcome["status"] == "success"
+        assert outcome["result"]["status"] == "scheduled"
 
-        see schedule_post.py's docstring) — execute() must surface that
-        clearly through the normal tool-error path rather than silently
-        succeeding or crashing uncaught.
-        """
-        import asyncio
-
-        async def _run() -> dict:
-            return await registry_module.execute_tool(
-                "schedule_post",
-                {"content": "hello", "publish_at": datetime.now(timezone.utc) + timedelta(days=1)},
-                approved=True,
-            )
-
-        outcome = asyncio.run(_run())
-        assert outcome["status"] == "error"
-        assert "no working backend" in outcome["error"]
 
 
 class TestSearchXPostsReadOnly:

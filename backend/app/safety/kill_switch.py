@@ -1,69 +1,50 @@
-"""System-wide kill switch — the one flag that halts all in-flight approvals.
-
-Storage choice: an in-process flag guarded by threading.Lock, matching the
-convention already established by llmops/cost_tracker.py and
-tools/rate_limit.py (both in-memory, process-local, documented as a seam for
-a later durable/shared backend) rather than skills/SAFETY.md's illustrative
-Redis example. The contract this module must satisfy specifies synchronous,
-no-`db`-argument signatures (`is_system_paused() -> bool`, etc.) — a
-Redis-backed implementation would need to be awaited, which would break that
-signature. Known limitation: pause state is per-process and does not survive
-a restart or apply across multiple worker processes; swapping in a shared
-backend later would not change any caller of this module.
-"""
+"""System-wide kill switch stored in Redis for cross-worker consistency."""
 
 from __future__ import annotations
 
-import threading
 from datetime import datetime, timezone
 from typing import Any
 
 import structlog
 
-logger = structlog.get_logger(__name__)
+from app.shared_state import get_client
 
-_lock = threading.Lock()
-_paused: bool = False
-_pause_reason: str | None = None
-_paused_by: str | None = None
-_paused_at: datetime | None = None
+logger = structlog.get_logger(__name__)
+_KEY = "safety:kill-switch"
 
 
 def is_system_paused() -> bool:
-    with _lock:
-        return _paused
+    return get_client().hget(_KEY, "paused") == "1"
 
 
 def pause_system(reason: str, paused_by: str) -> None:
-    global _paused, _pause_reason, _paused_by, _paused_at
-    with _lock:
-        _paused = True
-        _pause_reason = reason
-        _paused_by = paused_by
-        _paused_at = datetime.now(timezone.utc)
+    get_client().hset(
+        _KEY,
+        mapping={
+            "paused": "1",
+            "reason": reason,
+            "paused_by": paused_by,
+            "paused_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
     logger.warning("system_paused", reason=reason, paused_by=paused_by)
 
 
 def resume_system(resumed_by: str) -> None:
-    global _paused, _pause_reason, _paused_by, _paused_at
-    with _lock:
-        _paused = False
-        _pause_reason = None
-        _paused_by = None
-        _paused_at = None
+    get_client().delete(_KEY)
     logger.warning("system_resumed", resumed_by=resumed_by)
 
 
 def get_pause_info() -> dict[str, Any]:
-    with _lock:
-        return {
-            "paused": _paused,
-            "reason": _pause_reason,
-            "paused_by": _paused_by,
-            "paused_at": _paused_at,
-        }
+    state = get_client().hgetall(_KEY)
+    paused_at = state.get("paused_at")
+    return {
+        "paused": state.get("paused") == "1",
+        "reason": state.get("reason"),
+        "paused_by": state.get("paused_by"),
+        "paused_at": datetime.fromisoformat(paused_at) if paused_at else None,
+    }
 
 
 def reset_for_testing() -> None:
-    """Test-only — production code must never call this."""
-    resume_system(resumed_by="test-reset")
+    get_client().delete(_KEY)

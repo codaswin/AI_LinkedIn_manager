@@ -10,10 +10,11 @@ import type {
   SettingValue,
   ToolExecutionResult,
   WorkflowResult,
+  DashboardSession,
 } from "./types";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
-const DASHBOARD_API_KEY = import.meta.env.VITE_DASHBOARD_API_KEY as string | undefined;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8010";
+let csrfToken: string | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -25,11 +26,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(DASHBOARD_API_KEY ? { "X-Dashboard-API-Key": DASHBOARD_API_KEY } : {}),
+      ...(csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method) ? { "X-CSRF-Token": csrfToken } : {}),
       ...init?.headers,
     },
   });
@@ -43,6 +46,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+// -- Authentication -----------------------------------------------------
+
+export const login = async (username: string, password: string): Promise<DashboardSession> => {
+  const session = await request<DashboardSession>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  csrfToken = session.csrf_token;
+  return session;
+};
+
+export const getCurrentSession = async (): Promise<DashboardSession> => {
+  const session = await request<DashboardSession>("/auth/me");
+  csrfToken = session.csrf_token;
+  return session;
+};
+
+export const logout = async (): Promise<void> => {
+  try {
+    await request("/auth/logout", { method: "POST" });
+  } finally {
+    csrfToken = null;
+  }
+};
+
 // -- Health -------------------------------------------------------------
 
 export const getHealth = (): Promise<{ status: string }> => request("/health");
@@ -51,42 +79,48 @@ export const getHealth = (): Promise<{ status: string }> => request("/health");
 
 export const getSetting = (key: string): Promise<SettingValue> => request(`/settings/${encodeURIComponent(key)}`);
 
-export const updateSetting = (key: string, value: string, updatedBy: string): Promise<SettingValue> =>
+export const updateSetting = (key: string, value: string): Promise<SettingValue> =>
   request(`/settings/${encodeURIComponent(key)}`, {
     method: "PUT",
-    body: JSON.stringify({ value, updated_by: updatedBy }),
+    body: JSON.stringify({ value }),
   });
 
 // -- Approval queue -------------------------------------------------------
 
 export const listApprovals = (): Promise<ApprovalRequest[]> => request("/approvals");
 
-export const approveApproval = (id: string, decidedBy: string): Promise<ToolExecutionResult> =>
-  request(`/approvals/${encodeURIComponent(id)}/approve`, {
+export const retryApproval = (id: string): Promise<ToolExecutionResult> =>
+  request("/approvals/" + encodeURIComponent(id) + "/retry", {
     method: "POST",
-    body: JSON.stringify({ decided_by: decidedBy }),
+    body: JSON.stringify({}),
   });
 
-export const rejectApproval = (id: string, decidedBy: string, reason?: string): Promise<ApprovalRequest> =>
+export const approveApproval = (id: string): Promise<ToolExecutionResult> =>
+  request(`/approvals/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+
+export const rejectApproval = (id: string, reason?: string): Promise<ApprovalRequest> =>
   request(`/approvals/${encodeURIComponent(id)}/reject`, {
     method: "POST",
-    body: JSON.stringify({ decided_by: decidedBy, reason: reason ?? null }),
+    body: JSON.stringify({ reason: reason ?? null }),
   });
 
 // -- Learning proposal queue ------------------------------------------------
 
 export const listLearningProposals = (): Promise<LearningProposal[]> => request("/learning/proposals");
 
-export const approveLearningProposal = (id: string, decidedBy: string): Promise<LearningProposal> =>
+export const approveLearningProposal = (id: string): Promise<LearningProposal> =>
   request(`/learning/proposals/${encodeURIComponent(id)}/approve`, {
     method: "POST",
-    body: JSON.stringify({ decided_by: decidedBy }),
+    body: JSON.stringify({}),
   });
 
-export const rejectLearningProposal = (id: string, decidedBy: string, reason?: string): Promise<LearningProposal> =>
+export const rejectLearningProposal = (id: string, reason?: string): Promise<LearningProposal> =>
   request(`/learning/proposals/${encodeURIComponent(id)}/reject`, {
     method: "POST",
-    body: JSON.stringify({ decided_by: decidedBy, reason: reason ?? null }),
+    body: JSON.stringify({ reason: reason ?? null }),
   });
 
 export const triggerReflection = (days = 7): Promise<ReflectionResult> =>

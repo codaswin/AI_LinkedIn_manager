@@ -9,13 +9,28 @@ from pydantic import BaseModel
 # it — every other module's os.environ.get() calls (e.g. the research
 # tools' REDDIT_CLIENT_ID etc.) then just see it already populated.
 load_dotenv()
+def normalize_async_database_url(url: str) -> str:
+    """Map common provider URLs to SQLAlchemy's async dialects."""
+    replacements = (
+        ("postgres://", "postgresql+asyncpg://"),
+        ("postgresql://", "postgresql+asyncpg://"),
+        ("postgresql+psycopg2://", "postgresql+asyncpg://"),
+        ("sqlite://", "sqlite+aiosqlite://"),
+    )
+    for prefix, replacement in replacements:
+        if url.startswith(prefix):
+            return replacement + url[len(prefix):]
+    return url
+
 
 
 class Settings(BaseModel):
     VECTOR_DB_PATH: str = os.getenv("VECTOR_DB_PATH", "./data/faiss_index")
     RAG_EMBEDDING_DIM: int = int(os.getenv("RAG_EMBEDDING_DIM", "256"))
 
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
+    DATABASE_URL: str = normalize_async_database_url(
+        os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
+    )
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     WORKING_MEMORY_TTL_SECONDS: int = int(os.getenv("WORKING_MEMORY_TTL_SECONDS", "3600"))

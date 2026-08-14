@@ -3,7 +3,14 @@
 // small (8 resources) and stable enough that codegen would be more
 // machinery than the problem needs.
 
-export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type ApprovalStatus = "pending" | "executing" | "succeeded" | "failed" | "rejected";
+
+export type DashboardRole = "viewer" | "operator" | "admin";
+
+export interface DashboardSession {
+  user: { username: string; role: DashboardRole };
+  csrf_token: string;
+}
 
 export interface ApprovalRequest {
   id: string;
@@ -13,9 +20,14 @@ export interface ApprovalRequest {
   reason: string;
   confidence: number | null;
   status: ApprovalStatus;
+  idempotency_key: string;
+  attempt_count: number;
   created_at: string;
   decided_at: string | null;
   decided_by: string | null;
+  execution_started_at: string | null;
+  execution_finished_at: string | null;
+  last_error: string | null;
 }
 
 export type LearningProposalStatus = "pending" | "approved" | "rejected" | "auto_applied";

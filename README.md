@@ -553,13 +553,13 @@ Being upfront: a plain `README.md` rendered on GitHub can't run real animation �
 | RAG | FAISS | No KG layer for MVP |
 | Serving | FastAPI (`app/main.py`) | Settings, approval queue, learning queue, cost, health |
 | Frontend | React + Vite + TypeScript (`frontend/`) | One view per API resource, no framework/state-library overhead needed at this size |
-| Scheduling | APScheduler | Weekly reflection-job trigger, wired into the app's startup lifespan |
+| Scheduling | APScheduler | Reflection, research, engagement, retention, and approved publishing jobs |
 | Persistence | Postgres + Redis + FAISS | Episodic / working / semantic split |
 | LinkedIn integration | Composio | Auth, token refresh, low-level rate limits offloaded |
 | X integration | Composio, read-only scope | Optional research source only |
 | Web search | `ddgs` (DuckDuckGo) | No API key, swappable via `WebSearchProvider` interface |
 | RSS parsing | `feedparser` | Handles RSS 2.0 / Atom / RDF dialect variance |
-| Testing | pytest + pytest-asyncio + pytest-cov | 399 tests, 88.7% coverage |
+| Testing | pytest + pytest-asyncio + pytest-cov | 510 tests, 87.99% coverage |
 
 ---
 
@@ -620,7 +620,12 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/db
 REDIS_URL=redis://localhost:6379/0
 VECTOR_DB_PATH=./data/faiss_index
 CREDENTIAL_ENCRYPTION_KEY=       # required before saving dashboard credentials
-DASHBOARD_API_KEY=               # required for real deployments; enables X-Dashboard-API-Key auth
+DASHBOARD_ADMIN_USERNAME=admin # bootstrap user, created only when absent
+DASHBOARD_ADMIN_PASSWORD=       # required; provide through a secret manager
+SESSION_COOKIE_SECURE=true      # false only for local HTTP development
+SESSION_TTL_HOURS=12
+APPROVAL_MAX_ATTEMPTS=3
+APPROVAL_EXECUTION_LEASE_SECONDS=900
 
 # --- Inference ---
 ANTHROPIC_API_KEY=
@@ -692,7 +697,7 @@ For a local production-like stack, use Docker Compose from the repo root:
 docker compose up --build
 ```
 
-For real database changes, use the Alembic scaffold in `backend/alembic/`; `Base.metadata.create_all()` remains as a local/test safety net, not the deployment migration strategy.
+The backend container runs `alembic upgrade head` before starting Uvicorn. Runtime table creation is disabled by default; set `AUTO_CREATE_SCHEMA=true` only for isolated local or test databases. Docker Compose persists the generation-based FAISS store in the `vector_data` volume.
 
 ---
 
@@ -731,7 +736,7 @@ npm install
 npm run dev   # → http://localhost:5173
 ```
 
-Requires the backend running separately (see [Getting Started](#getting-started)) with CORS allowing the dashboard's origin — `CORS_ALLOWED_ORIGINS` in `.env.example` already defaults to Vite's dev-server ports. If backend `DASHBOARD_API_KEY` is set, set matching `VITE_DASHBOARD_API_KEY` in `frontend/.env` so requests include `X-Dashboard-API-Key`. Full setup/build details: `frontend/README.md`.
+Requires the backend running separately (see [Getting Started](#getting-started)) with CORS allowing the dashboard's origin — `CORS_ALLOWED_ORIGINS` in `.env.example` already defaults to Vite's dev-server ports. The dashboard signs in through an HttpOnly server session and sends a CSRF token for mutations; no secret is compiled into the browser bundle. Full setup/build details: `frontend/README.md`.
 
 ---
 
@@ -758,7 +763,7 @@ PYTHONPATH=backend python -m app.safety.audit
 cd frontend && npm run lint && npm run build
 ```
 
-Current state: **497 tests passing, 88.33% coverage**, ruff/mypy clean, frontend lint/build clean, tool-registry audit green, safety audit green.
+Current state: **510 tests passing, 87.99% coverage**, ruff/mypy clean, frontend lint/build clean, tool-registry audit green, safety audit green.
 
 ---
 
@@ -771,17 +776,19 @@ Current state: **497 tests passing, 88.33% coverage**, ruff/mypy clean, frontend
 - [x] Multi-source Research Agent (6 sources, X optional)
 - [x] Eval harness with regression gate
 - [x] Self-learning loop with hard human-review lines
+- [x] Production automation for research, engagement polling, retention, and approved scheduled publishing
+- [x] Episodic analytics aggregation with real impressions, engagement, follower, and top-post metrics
 - [x] FastAPI serving layer (`main.py`) — settings, approval queue, learning-proposal queue, cost, health, all over the same tested infrastructure above
 - [x] Self-learning loop running on an actual schedule (`learning/scheduler.py`, APScheduler, weekly by default, wired into the app's startup lifespan)
 - [x] A real live LLM client (`model_router.route_and_call`) — Anthropic for primary/cheap tiers, Hermes/vLLM (OpenAI-compatible) for the worker tier, both via a forced structured tool-call so every existing agent's response-parsing contract is untouched
 - [x] Dashboard UI for workflows, connections, brand voice, approval queue, self-learning queue, agent settings, and cost (`frontend/`, React + Vite)
-- [x] Production hardening scaffold: encrypted credential store, optional dashboard API-key guard, Alembic baseline, Docker Compose, CI, and centralized Python tooling config
+- [x] Production hardening: encrypted credential store, optional dashboard API-key guard, Alembic-first startup, durable lock-protected FAISS snapshots, Docker Compose, CI, and centralized Python tooling config
 
 **Explicitly post-MVP (per the original spec):**
 - [ ] Connection-relationship knowledge graph
 - [ ] Analytics-driven auto-scheduling
 
-**Known limitations carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (agents call `tools.registry.execute_tool()` directly outside the harness loop), so harness-native tool execution/logging remains future work. `schedule_post` is registered and approval-gated but intentionally disabled by the Content Writer until a real scheduling backend exists. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
+**Known limitations carried into the live client:** `RouteAndCallResponse.tool_calls` is always `[]` — no runtime agent built in this codebase ever passes a non-`None` `tool_executor` to `run_step()` (agents call `tools.registry.execute_tool()` directly outside the harness loop), so harness-native tool execution/logging remains future work. Anthropic pricing in `.env.example` is placeholder defaults, not verified real per-token pricing — override before trusting the cost cap for anything real.
 
 ---
 

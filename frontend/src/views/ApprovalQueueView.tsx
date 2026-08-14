@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { approveApproval, listApprovals, rejectApproval } from "../api";
+import { approveApproval, listApprovals, rejectApproval, retryApproval } from "../api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { StatusBadge } from "../components/StatusBadge";
-import { useActor } from "../actorStore";
 import type { ApprovalRequest } from "../types";
 
 function ArgumentsPreview({ args }: { args: Record<string, unknown> }) {
@@ -23,7 +22,6 @@ function ArgumentsPreview({ args }: { args: Record<string, unknown> }) {
 }
 
 export function ApprovalQueueView() {
-  const { actor } = useActor();
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +55,7 @@ export function ApprovalQueueView() {
       // credentials, Composio down, ...) still comes back as a normal 200
       // with status: "error" inside the body — approving is only "done"
       // once that inner status is checked too.
-      const result = await approveApproval(id, actor);
+      const result = await approveApproval(id);
       // refresh() clears the error banner itself (it has its own fetch that
       // can fail) — it must run BEFORE this function sets its own error, or
       // refresh()'s unconditional setError(null) wipes this one out before
@@ -75,11 +73,27 @@ export function ApprovalQueueView() {
     }
   }
 
+  async function handleRetry(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      const result = await retryApproval(id);
+      await refresh();
+      if (result.status !== "success") {
+        setError("Retry failed (" + result.status + "): " + (result.error ?? "no error detail returned"));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleReject(id: string) {
     setBusyId(id);
     setError(null);
     try {
-      await rejectApproval(id, actor, reasonDrafts[id]);
+      await rejectApproval(id, reasonDrafts[id]);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -118,29 +132,20 @@ export function ApprovalQueueView() {
             <p className="card-reason">{approval.reason}</p>
             <ArgumentsPreview args={approval.arguments} />
 
+            {approval.last_error && <p className="error-banner">{approval.last_error}</p>}
             <div className="card-actions">
-              <input
+              {approval.status === "pending" && <input
                 type="text"
                 placeholder="Rejection reason (optional)"
                 value={reasonDrafts[approval.id] ?? ""}
                 onChange={(e) => setReasonDrafts((prev) => ({ ...prev, [approval.id]: e.target.value }))}
-              />
-              <button
-                type="button"
-                className="btn-approve"
-                disabled={busyId === approval.id}
-                onClick={() => void handleApprove(approval.id)}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                className="btn-reject"
-                disabled={busyId === approval.id}
-                onClick={() => void handleReject(approval.id)}
-              >
-                Reject
-              </button>
+              />}
+{approval.status !== "pending" ? (
+                <button type="button" className="btn-approve" disabled={busyId === approval.id} onClick={() => void handleRetry(approval.id)}>Retry</button>
+              ) : (<>
+                <button type="button" className="btn-approve" disabled={busyId === approval.id} onClick={() => void handleApprove(approval.id)}>Approve</button>
+                <button type="button" className="btn-reject" disabled={busyId === approval.id} onClick={() => void handleReject(approval.id)}>Reject</button>
+              </>)}
             </div>
           </article>
         ))}

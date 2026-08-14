@@ -197,7 +197,7 @@ async def test_low_confidence_does_not_submit_and_flags_rewrite() -> None:
 
 
 @pytest.mark.asyncio
-async def test_future_target_publish_date_still_uses_publish_post_while_scheduling_unsupported() -> None:
+async def test_future_target_publish_date_uses_schedule_post() -> None:
     """schedule_post has no working backend (see content_writer.SCHEDULING_SUPPORTED
 
     and schedule_post.py's docstring) — even a perfectly valid future date
@@ -227,9 +227,10 @@ async def test_future_target_publish_date_still_uses_publish_post_while_scheduli
     )
 
     assert len(calls) == 1
-    assert calls[0]["tool_name"] == "publish_post"
-    assert calls[0]["arguments"] == {"content": "Drafted LinkedIn post about AI agents."}
-    assert result["tool_name"] == "publish_post"
+    assert calls[0]["tool_name"] == "schedule_post"
+    assert calls[0]["arguments"]["content"] == "Drafted LinkedIn post about AI agents."
+    assert calls[0]["arguments"]["publish_at"] == future.isoformat()
+    assert result["tool_name"] == "schedule_post"
 
 
 @pytest.mark.asyncio

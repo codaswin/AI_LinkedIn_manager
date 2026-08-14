@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { approveLearningProposal, listLearningProposals, rejectLearningProposal, triggerReflection } from "../api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { StatusBadge } from "../components/StatusBadge";
-import { useActor } from "../actorStore";
 import type { LearningProposal } from "../types";
 
 // Mirrors app/learning/proposal_review.py exactly — these types NEVER
@@ -18,7 +17,6 @@ const ALWAYS_REVIEW_TYPES = new Set([
 ]);
 
 export function LearningProposalsView() {
-  const { actor } = useActor();
   const [proposals, setProposals] = useState<LearningProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +44,7 @@ export function LearningProposalsView() {
     setBusyId(id);
     setError(null);
     try {
-      await approveLearningProposal(id, actor);
+      await approveLearningProposal(id);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -59,7 +57,7 @@ export function LearningProposalsView() {
     setBusyId(id);
     setError(null);
     try {
-      await rejectLearningProposal(id, actor);
+      await rejectLearningProposal(id);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

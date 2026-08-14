@@ -89,10 +89,8 @@ async def generate_weekly_digest(
 ) -> WeeklyDigest:
     """Purely informational: no approval gate on the digest itself.
 
-    `db` is accepted (and threaded through for a future real implementation that queries episodic
-    memory directly) but unused today — generate_analytics_report is currently a stub tool with no
-    memory-agent wiring yet (see its own TODO); this function's contract does not change when that
-    lands.
+    `db` remains part of the agent contract; the registered report tool opens a scoped session
+    against the same configured database and aggregates episodic post records directly.
 
     The only judgment call here — which posts look underperforming/stale/risky enough to flag — is
     made by the LLM, routed through harness.loop.run_step() (CLAUDE.md non-negotiable #1: no module

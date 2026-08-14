@@ -23,15 +23,17 @@ class PublishPostArgs(BaseModel):
     ),
     schema=PublishPostArgs,
 )
-async def execute(args: PublishPostArgs) -> dict[str, t.Any]:
-    # Reached only after the safety-agent's approval gate passes this call through with
-    # approved=True — see registry.execute_tool's ApprovalRequiredError guard.
-    #
+async def publish_content(content: str) -> dict[str, t.Any]:
+    # Direct calls are reserved for approved items claimed by the scheduled publishing worker.
     # `author` and `commentary` are LINKEDIN_CREATE_LINKED_IN_POST's real required fields —
     # verified live against Composio's own schema (GET /api/v3/tools/LINKEDIN_CREATE_LINKED_IN_POST),
     # not guessed. `author` is a LinkedIn URN (e.g. urn:li:person:...), not free text — see
     # composio_client.get_linkedin_author_urn().
     daily_rate_limiter.check_and_increment("publish_post", RATE_LIMIT_ENV_VAR)
     author = await get_linkedin_author_urn()
-    response = await execute_linkedin_action(COMPOSIO_ACTION_SLUG, {"author": author, "commentary": args.content})
-    return {"status": "published", "content": args.content, "composio_response": response}
+    response = await execute_linkedin_action(COMPOSIO_ACTION_SLUG, {"author": author, "commentary": content})
+    return {"status": "published", "content": content, "composio_response": response}
+
+
+async def execute(args: PublishPostArgs) -> dict[str, t.Any]:
+    return await publish_content(args.content)

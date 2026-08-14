@@ -1243,3 +1243,28 @@ button:active:not(:disabled){transform:translateY(1px)}
     clip: rect(0 0 0 0);
   }
 }
+
+
+/* Authenticated entry state */
+.login-shell { min-height:100svh; display:grid; place-items:center; padding:24px; background:var(--bg); }
+.login-panel { width:min(100%,400px); display:flex; flex-direction:column; gap:18px; padding:30px; border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); animation:view-enter .28s ease both; }
+.login-brand { display:flex; align-items:center; gap:10px; color:var(--text-h); }
+.login-brand > span:last-child { display:flex; flex-direction:column; line-height:1.15; }
+.login-brand strong { font-size:1rem; }
+.login-brand small { color:var(--text); font-size:.76rem; font-weight:650; text-transform:uppercase; }
+.login-heading { display:flex; align-items:flex-start; gap:11px; padding-top:8px; }
+.login-heading > span { display:grid; width:36px; height:36px; flex:0 0 36px; place-items:center; border-radius:6px; color:var(--accent); background:var(--accent-bg); }
+.login-heading h1 { font-size:1.35rem; letter-spacing:0; }
+.login-heading p { margin-top:3px; color:var(--text); }
+.login-field { display:flex; flex-direction:column; gap:6px; color:var(--text-h); font-size:.8rem; font-weight:700; }
+.login-field input { width:100%; min-height:42px; padding:9px 11px; color:var(--text-h); border:1px solid var(--border); border-radius:5px; background:var(--surface); font:inherit; font-weight:500; }
+.login-field input:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+.login-submit { min-height:42px; border-color:var(--accent); border-radius:5px; color:#fff; background:#0a66c2; }
+.login-submit:hover:not(:disabled) { background:#004182; }
+.login-error { padding:10px 12px; color:var(--danger); border-left:3px solid var(--danger); background:var(--danger-bg); font-size:.82rem; }
+.auth-loading { min-height:100svh; display:flex; align-items:center; justify-content:center; gap:10px; color:var(--text-h); font-weight:650; }
+.auth-spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
+.sidebar-user-details strong { overflow:hidden; color:var(--sidebar-text); font-size:.76rem; text-overflow:ellipsis; white-space:nowrap; }
+.sidebar-user-details small { color:var(--sidebar-muted); font-size:.62rem; font-weight:700; text-transform:capitalize; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:480px) { .login-shell { padding:14px; } .login-panel { padding:22px 18px; } }

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import typing as t
+import uuid
 from datetime import datetime, timezone
 
-from app.tools.composio_client import ComposioConfigError
+from app.database import get_session_factory
+from app.models.automation import ScheduledPostRecord
+from app.tools.execution_context import current_idempotency_key
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 
 class SchedulePostArgs(BaseModel):
@@ -18,29 +23,61 @@ class SchedulePostArgs(BaseModel):
         reference = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
         if reference <= datetime.now(timezone.utc):
             raise ValueError("publish_at must be in the future")
-        return value
+        return reference.astimezone(timezone.utc)
 
 
 @registry.register(
     ToolDefinition(
         name="schedule_post",
-        description="Queue post content to auto-publish to LinkedIn at a future time",
+        description="Persist approved post content for automatic LinkedIn publishing at a future time",
         requires_approval=True,
     ),
     schema=SchedulePostArgs,
 )
 async def execute(args: SchedulePostArgs) -> dict[str, t.Any]:
-    # Composio's LinkedIn toolkit has no scheduling action — confirmed live by
-    # listing every tool under the linkedin toolkit (GET /api/v3/tools?toolkit_slug=linkedin):
-    # only LINKEDIN_CREATE_LINKED_IN_POST, _DELETE_LINKED_IN_POST, _GET_COMPANY_INFO, and
-    # _GET_MY_INFO exist. There is currently no backend that can actually delay this post's
-    # publication, so this raises rather than either posting immediately (surprising — the human
-    # approved a *scheduled* post) or silently reporting success. Real support needs a stored
-    # queue plus a periodic job (e.g. extending learning/scheduler.py's APScheduler) to publish
-    # due posts via publish_post's own path — not built here since that's new infrastructure,
-    # not a bug fix.
-    raise ComposioConfigError(
-        "schedule_post has no working backend yet — Composio's LinkedIn integration has no "
-        "scheduling action. Use publish_post to post now instead, or ask for real scheduling "
-        "support to be built."
-    )
+    idempotency_key = current_idempotency_key()
+    async with get_session_factory()() as db:
+        if idempotency_key:
+            existing = (
+                await db.execute(
+                    select(ScheduledPostRecord).where(
+                        ScheduledPostRecord.idempotency_key == idempotency_key
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return _result(existing)
+
+        record = ScheduledPostRecord(
+            id=str(uuid.uuid4()),
+            content=args.content,
+            publish_at=args.publish_at,
+            status="pending",
+            idempotency_key=idempotency_key,
+        )
+        db.add(record)
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if not idempotency_key:
+                raise
+            existing = (
+                await db.execute(
+                    select(ScheduledPostRecord).where(
+                        ScheduledPostRecord.idempotency_key == idempotency_key
+                    )
+                )
+            ).scalar_one()
+            return _result(existing)
+        await db.refresh(record)
+        return _result(record)
+
+
+def _result(record: ScheduledPostRecord) -> dict[str, t.Any]:
+    return {
+        "status": "scheduled",
+        "scheduled_post_id": record.id,
+        "content": record.content,
+        "publish_at": record.publish_at.isoformat(),
+    }

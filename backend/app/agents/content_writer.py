@@ -56,14 +56,9 @@ CONFIDENCE_THRESHOLD = 0.75
 
 SubmitApprovalFn = Callable[..., Awaitable[Any]]
 
-# schedule_post has no working backend — Composio's LinkedIn toolkit has no
-# scheduling action (verified live: only create/delete/get-company-info/
-# get-my-info exist). Routing there anyway would submit an approval that's
-# guaranteed to fail the moment a human approves it. Flip this back on once
-# real scheduling infrastructure exists (see schedule_post.py's docstring)
-# — the date-resolution logic below stays ready for that, it just isn't
-# reachable as a tool_name choice until then.
-SCHEDULING_SUPPORTED = False
+# Approved future posts are persisted locally; the scheduled publishing job
+# sends them through the same rate-limited LinkedIn publishing implementation.
+SCHEDULING_SUPPORTED = True
 
 # LinkedIn publishing requires an hour, not just a day — this is the default
 # time of day used when a brief's target_publish_date is a bare date.

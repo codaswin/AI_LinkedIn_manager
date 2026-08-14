@@ -65,7 +65,13 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
   }
 
   return (
-    <article className="card connection-card">
+    <form
+      className="card connection-card"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSave();
+      }}
+    >
       <div className="card-title-row">
         <h3>
           {platform.name}
@@ -96,6 +102,7 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
                     : f.placeholder
               }
               value={draft[f.name] ?? ""}
+              autoComplete="off"
               onChange={(e) => setDraft((prev) => ({ ...prev, [f.name]: e.target.value }))}
             />
           </label>
@@ -105,7 +112,7 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
       <p className="connection-help">{platform.help_text}</p>
 
       <div className="card-actions">
-        <button type="button" onClick={() => void handleSave()} disabled={saving || !canSave}>
+        <button type="submit" disabled={saving || !canSave}>
           {saving ? "Saving…" : "Save"}
         </button>
         {platform.connected && (
@@ -114,7 +121,7 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
           </button>
         )}
       </div>
-    </article>
+    </form>
   );
 }
 

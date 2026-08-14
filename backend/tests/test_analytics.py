@@ -60,7 +60,7 @@ def _valid_delete_kwargs(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_digest_calls_report_tool_without_approval() -> None:
+async def test_generate_weekly_digest_calls_report_tool_without_approval(db_session) -> None:
     captured: dict[str, Any] = {}
     real_execute_tool = analytics.execute_tool
 
@@ -85,7 +85,7 @@ async def test_generate_weekly_digest_calls_report_tool_without_approval() -> No
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_digest_routes_llm_call_through_run_step() -> None:
+async def test_generate_weekly_digest_routes_llm_call_through_run_step(db_session) -> None:
     """CLAUDE.md non-negotiable #1: no module may call an LLM client directly — every call must
 
     go through harness.loop.run_step(). This asserts the digest's judgment call receives a real
@@ -113,7 +113,7 @@ async def test_generate_weekly_digest_routes_llm_call_through_run_step() -> None
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_digest_returns_well_formed_digest() -> None:
+async def test_generate_weekly_digest_returns_well_formed_digest(db_session) -> None:
     digest = await generate_weekly_digest(
         db=None,
         llm_client=_fake_llm_client([{"post_id": "post-9", "reason": "No engagement in 90 days"}]),
@@ -131,7 +131,7 @@ async def test_generate_weekly_digest_returns_well_formed_digest() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_digest_defaults_flagged_posts_to_empty_list() -> None:
+async def test_generate_weekly_digest_defaults_flagged_posts_to_empty_list(db_session) -> None:
     async def fake_llm_client(*, state: AgentState, config: AgentRunConfig) -> FakeLLMResponse:
         return FakeLLMResponse(text="")
 
@@ -265,3 +265,41 @@ def test_config_agent_name_and_allowed_tools() -> None:
 
 def test_config_escalation_condition_is_none() -> None:
     assert ANALYTICS_AGENT_CONFIG.escalation_condition is None
+
+
+def test_default_weekly_report_range_spans_seven_dates() -> None:
+    from app.tools.generate_analytics_report import GenerateAnalyticsReportArgs, _date_bounds
+
+    start, end = _date_bounds(GenerateAnalyticsReportArgs(period="weekly", period_end=date(2026, 8, 8)))
+
+    assert start == date(2026, 8, 2)
+    assert end == date(2026, 8, 8)
+
+
+@pytest.mark.asyncio
+async def test_generate_weekly_digest_aggregates_real_episode_data(db_session) -> None:
+    from app.models.episode import PostEpisode
+
+    db_session.add_all([
+        PostEpisode(
+            entity_id="owner", post_id="post-a", content="A",
+            published_at=datetime(2026, 8, 2, tzinfo=timezone.utc),
+            impressions=100, likes=10, comments=5, shares=5, follower_delta=3,
+        ),
+        PostEpisode(
+            entity_id="owner", post_id="post-b", content="B",
+            published_at=datetime(2026, 8, 3, tzinfo=timezone.utc),
+            impressions=300, likes=15, comments=10, shares=5, follower_delta=2,
+        ),
+    ])
+    await db_session.commit()
+
+    digest = await generate_weekly_digest(
+        db=db_session,
+        llm_client=_fake_llm_client([]),
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 8),
+    )
+    assert digest.total_impressions == 400
+    assert digest.avg_engagement_rate == pytest.approx(0.125)
+    assert digest.follower_delta == 5

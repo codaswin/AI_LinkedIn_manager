@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSetting, updateSetting } from "../api";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { useActor } from "../actorStore";
 import type { SettingValue } from "../types";
 
 // There's no "list all settings" endpoint (memory/settings.py is a
@@ -11,7 +10,6 @@ import type { SettingValue } from "../types";
 const KNOWN_SETTINGS = ["research_agent.poll_interval"];
 
 function SettingEditor({ settingKey }: { settingKey: string }) {
-  const { actor } = useActor();
   const [current, setCurrent] = useState<SettingValue | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -44,7 +42,7 @@ function SettingEditor({ settingKey }: { settingKey: string }) {
     setError(null);
     setSaved(false);
     try {
-      const updated = await updateSetting(settingKey, draft, actor);
+      const updated = await updateSetting(settingKey, draft);
       setCurrent(updated);
       setSaved(true);
     } catch (err) {

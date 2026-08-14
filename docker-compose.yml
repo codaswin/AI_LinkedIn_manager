@@ -9,11 +9,24 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkedin -d linkedin_manager"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   redis:
     image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   backend:
     build: ./backend
@@ -21,18 +34,32 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://linkedin:linkedin@postgres:5432/linkedin_manager
       REDIS_URL: redis://redis:6379/0
+      VECTOR_DB_PATH: /data/faiss_index
+      SESSION_COOKIE_SECURE: "false"
     ports:
-      - "8000:8000"
+      - "8010:8000"
+    volumes:
+      - vector_data:/data/faiss_index
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   frontend:
     build: ./frontend
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  redis_data:
+  vector_data:
