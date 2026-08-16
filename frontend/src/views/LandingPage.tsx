@@ -1,14 +1,18 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
+  Activity,
   ArrowRight,
   BarChart3,
+  Check,
   Compass,
   History,
   LockKeyhole,
   MessageCircle,
+  Network,
   PenLine,
   Search,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { motion, useMotionValue, useSpring } from "motion/react";
 import "../LandingPage.css";
@@ -103,6 +107,72 @@ const TRUST = [
   },
 ] as const;
 
+const PROOF = [
+  { value: "5", label: "specialist agents" },
+  { value: "6", label: "research sources" },
+  { value: "100%", label: "public actions gated" },
+  { value: "497", label: "automated tests" },
+] as const;
+
+function ProductPreview() {
+  return (
+    <motion.div
+      className="product-preview"
+      initial={{ opacity: 0, y: 24, scale: 0.975, filter: "blur(6px)" }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      transition={{ type: "spring", stiffness: 220, damping: 28, delay: 0.22 }}
+    >
+      <div className="preview-window-bar">
+        <span className="preview-window-dots" aria-hidden="true"><i /><i /><i /></span>
+        <span className="preview-window-title"><LockKeyhole size={11} /> Private workspace</span>
+        <span className="preview-live"><i /> Live</span>
+      </div>
+      <div className="preview-shell">
+        <aside className="preview-rail" aria-hidden="true">
+          <span className="preview-rail-mark"><NetworkMark /></span>
+          <span className="preview-rail-item preview-rail-item-active"><Activity size={15} /></span>
+          <span className="preview-rail-item"><ShieldCheck size={15} /></span>
+          <span className="preview-rail-item"><Network size={15} /></span>
+          <span className="preview-rail-spacer" />
+          <span className="preview-avatar">A</span>
+        </aside>
+        <div className="preview-main">
+          <div className="preview-heading">
+            <div><span>Command center</span><strong>Good morning, Aswin.</strong></div>
+            <span className="preview-status"><i /> Systems operational</span>
+          </div>
+          <div className="preview-kpis">
+            <div><span>Active agents</span><strong>3 <small>/ 5</small></strong></div>
+            <div><span>Pending approvals</span><strong>2</strong></div>
+            <div><span>Daily cost</span><strong>$0.84</strong></div>
+          </div>
+          <div className="preview-grid">
+            <div className="preview-activity-card">
+              <div className="preview-card-head"><span>Live activity</span><small>Now</small></div>
+              <div className="preview-agent-row">
+                <span className="preview-agent-icon"><Search size={14} /></span>
+                <div><strong>Research agent</strong><small>Ranking 42 signals across 6 sources</small></div>
+                <span className="preview-wave" aria-hidden="true"><i /><i /><i /><i /></span>
+              </div>
+              <div className="preview-agent-row">
+                <span className="preview-agent-icon"><PenLine size={14} /></span>
+                <div><strong>Content writer</strong><small>Drafting in your brand voice</small></div>
+                <span className="preview-done"><Check size={11} /></span>
+              </div>
+            </div>
+            <div className="preview-approval-card">
+              <div className="preview-card-head"><span>Decision needed</span><small>Draft post</small></div>
+              <p>“The best AI workflows don’t remove judgment. They move it to the moment where it matters…”</p>
+              <div className="preview-confidence"><span><Sparkles size={11} /> Brand match</span><strong>94%</strong></div>
+              <div className="preview-actions"><span>Reject</span><strong><Check size={11} /> Approve</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
   return (
     <motion.div
@@ -152,47 +222,37 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
 
       <section className="landing-hero" onPointerMove={handlePointerMove}>
         <motion.div className="landing-glow" style={{ left: glowX, top: glowY }} aria-hidden="true" />
-        <div className="landing-hero-content">
-          <motion.span
-            className="landing-hero-badge"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 300, damping: 26 }}
-          >
-            <NetworkMark />
-          </motion.span>
-          <motion.h1
-            initial={{ opacity: 0, y: 14, filter: "blur(4px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.05 }}
-          >
-            Five agents.
-            <br />
-            One LinkedIn presence, run for you.
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.12 }}
-          >
-            Research finds what's worth saying. A strategist and a writer turn it into a post in your voice.
-            An engagement agent handles the replies. Analytics tells you what worked. You approve every
-            publish — nothing goes out on its own.
-          </motion.p>
-          <motion.div
-            className="landing-hero-actions"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.18 }}
-          >
-            <button type="button" className="landing-cta-primary" onClick={onEnter}>
-              Enter dashboard <ArrowRight size={16} />
-            </button>
-            <a className="landing-cta-secondary" href="#how-it-works">
-              See how it works
-            </a>
-          </motion.div>
+        <div className="landing-hero-inner">
+          <div className="landing-hero-content">
+            <motion.span className="landing-hero-kicker" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}>
+              <Sparkles size={13} /> Your AI team for LinkedIn
+            </motion.span>
+            <motion.h1 initial={{ opacity: 0, y: 14, filter: "blur(4px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.05 }}>
+              Your LinkedIn presence,<br />run with <span>human judgment.</span>
+            </motion.h1>
+            <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.12 }}>
+              Five specialist agents research, write, engage, and learn in your voice. You stay in control of
+              every public action from one calm, private workspace.
+            </motion.p>
+            <motion.div className="landing-hero-actions" initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 280, damping: 30, delay: 0.18 }}>
+              <button type="button" className="landing-cta-primary" onClick={onEnter}>
+                Enter dashboard <ArrowRight size={16} />
+              </button>
+              <a className="landing-cta-secondary" href="#how-it-works">Explore the system</a>
+            </motion.div>
+          </div>
+          <ProductPreview />
         </div>
+      </section>
+
+      <section className="landing-proof" aria-label="Product facts">
+        {PROOF.map((item) => <div key={item.label}><strong>{item.value}</strong><span>{item.label}</span></div>)}
       </section>
 
       <section className="landing-section" id="how-it-works">
