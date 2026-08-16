@@ -103,12 +103,34 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+@app.middleware("http")
+async def _dashboard_session_guard(request: Request, call_next):
+    if request.method.upper() == "OPTIONS" or is_public_path(request.url.path):
+        return await call_next(request)
+    try:
+        user = await authenticate_request(request)
+        authorize_request(request, user)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
+
 # The dashboard frontend (frontend/, a separate Vite dev server / static
 # build) runs on a different origin than this API, so it needs CORS
 # explicitly enabled. Defaults cover Vite's dev-server ports; override via
 # CORS_ALLOWED_ORIGINS (comma-separated) for a real deployment's actual
 # frontend origin — never widen this to "*" once credentials/cookies are
 # in play.
+#
+# Registered AFTER _dashboard_session_guard (not before): Starlette wraps
+# middleware in the order they're added, each new one OUTSIDE the previous —
+# so whichever call comes last ends up outermost. With CORSMiddleware added
+# first (innermost), every 401 the guard returns for an unauthenticated
+# request short-circuited entirely inside the guard, never reaching
+# CORSMiddleware to get an Access-Control-Allow-Origin header — the browser
+# then reports a CORS failure instead of a real 401, and the login page
+# itself couldn't call /auth/login. Registering CORS last makes it the
+# outermost layer so it can decorate every response, including the guard's.
 _DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 _cors_origins = [
     origin.strip()
@@ -122,18 +144,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.middleware("http")
-async def _dashboard_session_guard(request: Request, call_next):
-    if request.method.upper() == "OPTIONS" or is_public_path(request.url.path):
-        return await call_next(request)
-    try:
-        user = await authenticate_request(request)
-        authorize_request(request, user)
-    except HTTPException as exc:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-    return await call_next(request)
 
 
 # Any endpoint that can trigger a real model call (the /workflows/* triggers,

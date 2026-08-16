@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
 import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, UserRound, Workflow, X } from "lucide-react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import "./App.css";
 import { ApiError, getCurrentSession, login, logout } from "./api";
 import { ActivityBanner } from "./components/ActivityBanner";
@@ -29,7 +30,24 @@ const NAV_GROUPS = ["Workspace", "Intelligence", "System"] as const;
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   const nextTheme = theme === "light" ? "dark" : "light";
-  return <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${nextTheme} theme`} title={`Switch to ${nextTheme} theme`}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button>;
+  // The icon itself is the feedback for what just happened (design skill
+  // §13, causality) — it morphs into the new state rather than snapping,
+  // so pressing the button reads as "the sun set" / "the sun rose" instead
+  // of an inert glyph swap.
+  return <button type="button" className="theme-toggle theme-toggle-morph" onClick={toggleTheme} aria-label={`Switch to ${nextTheme} theme`} title={`Switch to ${nextTheme} theme`}>
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={theme}
+        className="theme-toggle-icon"
+        initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
+        animate={{ rotate: 0, scale: 1, opacity: 1 }}
+        exit={{ rotate: 90, scale: 0.4, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      >
+        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+      </motion.span>
+    </AnimatePresence>
+  </button>;
 }
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: DashboardSession) => void }) {
@@ -52,14 +70,20 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Dashboard
   }
 
   return <main className="login-shell">
-    <form className="login-panel" onSubmit={(event) => void handleSubmit(event)}>
+    <motion.form
+      className="login-panel"
+      onSubmit={(event) => void handleSubmit(event)}
+      initial={{ opacity: 0, scale: 0.96, filter: "blur(4px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      transition={{ type: "spring", stiffness: 380, damping: 32 }}
+    >
       <div className="login-brand"><span className="sidebar-brand-mark"><Bot size={22} /></span><span><strong>AI LinkedIn</strong><small>Manager</small></span></div>
       <div className="login-heading"><span><LockKeyhole size={19} /></span><div><h1>Dashboard sign in</h1><p>Use your assigned workspace account.</p></div></div>
       {error && <p className="login-error" role="alert">{error}</p>}
       <label className="login-field"><span>Username</span><input autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} /></label>
       <label className="login-field"><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "Signing in..." : "Sign in"}</button>
-    </form>
+    </motion.form>
   </main>;
 }
 
@@ -99,7 +123,15 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
             <span className="sidebar-group-label">{group}</span>
             {TABS.filter((tab) => tab.group === group).map((tab) => {
               const Icon = tab.icon;
-              return <button key={tab.id} type="button" className={tab.id === activeTab ? "sidebar-item sidebar-item-active" : "sidebar-item"} onClick={() => selectTab(tab.id)} aria-current={tab.id === activeTab ? "page" : undefined}>
+              const isActive = tab.id === activeTab;
+              return <button key={tab.id} type="button" className={isActive ? "sidebar-item sidebar-item-active" : "sidebar-item"} onClick={() => selectTab(tab.id)} aria-current={isActive ? "page" : undefined}>
+                {isActive && (
+                  <motion.span
+                    layoutId="sidebar-active-indicator"
+                    className="sidebar-item-indicator"
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  />
+                )}
                 <span className="sidebar-item-icon"><Icon size={19} strokeWidth={1.9} /></span>
                 <span className="sidebar-item-copy"><strong>{tab.label}</strong><small>{tab.description}</small></span>
                 <ChevronRight className="sidebar-item-chevron" size={15} />
@@ -115,7 +147,20 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
       </aside>
       <main className="app-main">
         <div className="page-context"><span className="page-context-icon"><ActiveIcon size={18} /></span><span>{active.group}</span><ChevronRight size={13} /><strong>{active.label}</strong></div>
-        <div className="view-transition" key={active.id}>{active.render()}</div>
+        {/* popLayout takes the outgoing view out of flow immediately so the
+            incoming one doesn't wait on it — switching tabs mid-animation
+            redirects cleanly instead of queuing (design skill §3). */}
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={active.id}
+            initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
+            transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          >
+            {active.render()}
+          </motion.div>
+        </AnimatePresence>
       </main>
     </div>
   </div>;
@@ -138,5 +183,5 @@ function AuthenticatedApp() {
 }
 
 export default function App() {
-  return <ThemeProvider><AuthenticatedApp /></ThemeProvider>;
+  return <MotionConfig reducedMotion="user"><ThemeProvider><AuthenticatedApp /></ThemeProvider></MotionConfig>;
 }

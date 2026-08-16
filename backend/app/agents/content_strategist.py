@@ -28,10 +28,15 @@ SYSTEM_PROMPT = (
     "itself. Given the content calendar, recent trending-topic research "
     "(including the Research Agent's X findings), and the last 30 days of "
     "published posts, produce ONE structured brief: topic, angle, target "
-    "format (text/article/poll), and target publish date. Favor topics not "
-    "already covered in the last 30 days. Ground the angle in retrieved "
-    "research rather than generic commentary. Output only the brief — never "
-    "post copy, that's the Content Writer's job."
+    "format (text/article/poll), and target publish date. Leave target publish "
+    "date null by default — that means the post publishes as soon as a human "
+    "approves it, which is what a human clicking 'approve' expects. Only set "
+    "an explicit future date when the content calendar names one; never invent "
+    "a delay on your own (e.g. defaulting to 'next week') just because content "
+    "calendars conventionally look that way. Favor topics not already covered "
+    "in the last 30 days. Ground the angle in retrieved research rather than "
+    "generic commentary. Output only the brief — never post copy, that's the "
+    "Content Writer's job."
 )
 
 register_prompt("content_strategist", SYSTEM_PROMPT)
@@ -127,9 +132,10 @@ async def build_post_brief(
         current_task=(
             f"Today's date is {datetime.now(tz=timezone.utc).date().isoformat()}. Produce exactly one PostBrief as a JSON "
             "object with keys topic, angle, format (text/article/poll), and target_publish_date "
-            "(ISO date or null), for the next LinkedIn post. If you set target_publish_date, it "
-            "must be a real date after today — never guess a date without today's date as your "
-            "reference point."
+            "(ISO date or null), for the next LinkedIn post. Default target_publish_date to null "
+            "so the post publishes immediately once a human approves it. Only set a future date if "
+            "the content calendar entries below explicitly name one — if you do, it must be a real "
+            "date after today, never guessed without today's date as your reference point."
         ),
         scratchpad={
             "calendar_entries": calendar_entries,

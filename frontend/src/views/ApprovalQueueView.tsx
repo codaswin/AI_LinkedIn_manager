@@ -4,6 +4,28 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import type { ApprovalRequest } from "../types";
 
+function PublishTimingNotice({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+  // Plain-language callout so "Approve" never reads as "post now" when it
+  // isn't — schedule_post silently defers to a future publish_at, and a
+  // human approving it needs that spelled out, not left to infer from a
+  // raw ISO timestamp in the arguments list below.
+  if (toolName === "schedule_post" && typeof args.publish_at === "string") {
+    const when = new Date(args.publish_at);
+    return (
+      <p className="publish-timing-notice">
+        📅 Approving this will <strong>schedule</strong> it — it publishes automatically on{" "}
+        <strong>{when.toLocaleString()}</strong>, not immediately.
+      </p>
+    );
+  }
+  if (toolName === "publish_post") {
+    return (
+      <p className="publish-timing-notice">🚀 Approving this publishes it to LinkedIn immediately.</p>
+    );
+  }
+  return null;
+}
+
 function ArgumentsPreview({ args }: { args: Record<string, unknown> }) {
   // Renders every argument key/value so nothing is hidden from the human
   // approving it — CLAUDE.md: a delete_post approval must show the full
@@ -130,6 +152,7 @@ export function ApprovalQueueView() {
               {new Date(approval.created_at).toLocaleString()}
             </p>
             <p className="card-reason">{approval.reason}</p>
+            <PublishTimingNotice toolName={approval.tool_name} args={approval.arguments} />
             <ArgumentsPreview args={approval.arguments} />
 
             {approval.last_error && <p className="error-banner">{approval.last_error}</p>}

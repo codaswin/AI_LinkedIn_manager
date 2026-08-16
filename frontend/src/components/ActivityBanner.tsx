@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { BarChart3, BrainCircuit, Compass, MessageCircle, PenLine, Search, Settings2 } from "lucide-react";
+import { motion } from "motion/react";
 import { getActivity } from "../api";
 import type { AgentActivity } from "../types";
+
+// Blur+scale settling in together (not a plain fade) so a new agent taking
+// over the banner reads as a real material arriving, per the design skill's
+// "materialize, don't just fade" rule. Keyed by agent identity below (not
+// the whole entry) so a poll tick that only updates elapsed-seconds doesn't
+// re-trigger this on every refresh.
+const MATERIALIZE = {
+  initial: { opacity: 0, scale: 0.98, filter: "blur(3px)" },
+  animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
+  transition: { type: "spring", stiffness: 420, damping: 38 } as const,
+};
 
 const POLL_INTERVAL_MS = 1200;
 
@@ -45,18 +57,18 @@ export function ActivityBanner() {
   }, []);
 
   if (!entry) {
-    return <div className="activity-banner activity-banner-idle">
+    return <motion.div key="idle" className="activity-banner activity-banner-idle" {...MATERIALIZE}>
       <span className="activity-dot" />
       <span className="activity-text">All quiet - no workflow running right now</span>
-    </div>;
+    </motion.div>;
   }
 
   const meta = AGENT_META[entry.agent] ?? { ...FALLBACK_META, label: entry.agent };
   const AgentIcon = meta.icon;
 
-  return <div className="activity-banner activity-banner-active">
+  return <motion.div key={entry.agent} className="activity-banner activity-banner-active" {...MATERIALIZE}>
     <span className={`activity-icon ${meta.animClass}`} aria-hidden="true"><AgentIcon size={16} /></span>
     <span className="activity-text"><strong>{meta.label}</strong>{" - "}{entry.detail || entry.action}</span>
     <span className="activity-elapsed">{entry.elapsed_seconds.toFixed(1)}s</span>
-  </div>;
+  </motion.div>;
 }
