@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowDown, Check, Minus, Plus } from "lucide-react";
 import {
   triggerAnalyticsWorkflow,
   triggerContentWorkflow,
@@ -8,6 +10,8 @@ import {
 } from "../api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import type { ResearchResultItem, WorkflowResult } from "../types";
+
+const CONTENT_CARD_ID = "content-workflow-card";
 
 const RESEARCH_SOURCES = ["hackernews", "reddit", "github", "producthunt", "rss", "web", "x"] as const;
 
@@ -252,16 +256,131 @@ function EngagementResult({ result }: { result: WorkflowResult }) {
 // one makes app.activity's board go active, which is what drives
 // ActivityBanner's animation; this view just fires the request and shows
 // whatever the workflow returned.
-function ResearchTrigger() {
+function researchLine(item: ResearchResultItem): string {
+  return `${item.title} (via ${item.source})`;
+}
+
+// A press-driven stepper, not a typed number field — clearing a controlled
+// numeric input to type a replacement digit is a well-known trap (the empty
+// string coerces to 0, which a `|| fallback` snaps straight back to the old
+// value, so the field looks physically stuck). Buttons sidestep the whole
+// class of bug and match how every other quantity control in this app
+// already behaves (checkboxes, selects) — nothing here is ever typed.
+function NumberStepper({
+  label,
+  value,
+  onChange,
+  min = 1,
+  max = 25,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <div className="stepper">
+      <span className="stepper-label">{label}</span>
+      <div className="stepper-control">
+        <button
+          type="button"
+          className="stepper-btn"
+          onClick={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+          aria-label={`Decrease ${label}`}
+        >
+          <Minus size={14} />
+        </button>
+        <motion.span
+          key={value}
+          className="stepper-value"
+          aria-live="polite"
+          initial={{ opacity: 0, y: value > min ? 6 : -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 500, damping: 32 }}
+        >
+          {value}
+        </motion.span>
+        <button
+          type="button"
+          className="stepper-btn"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          aria-label={`Increase ${label}`}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResearchTrigger({ onAddToContent }: { onAddToContent: (lines: string[]) => void }) {
   const [query, setQuery] = useState("");
   const [sources, setSources] = useState<string[]>([...RESEARCH_SOURCES].filter((s) => s !== "x"));
   const [limitPerSource, setLimitPerSource] = useState(10);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ResearchResultItem[] | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [justAdded, setJustAdded] = useState<number | null>(null);
+  const [justAddedCount, setJustAddedCount] = useState<number | null>(null);
 
   function toggleSource(source: string) {
     setSources((prev) => (prev.includes(source) ? prev.filter((s) => s !== source) : [...prev, source]));
+  }
+
+  function toggleSelected(idx: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(results?.map((_, idx) => idx) ?? []));
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  // Scrolling to the Content card + a transient "added" confirmation is the
+  // feedback that makes a background state update (adding to a sibling
+  // component's textarea) legible — otherwise a click here has no visible
+  // effect anywhere near where you clicked (design skill §13, causality).
+  function flashConfirmation(count: number) {
+    setJustAddedCount(count);
+    window.setTimeout(() => setJustAddedCount(null), 2400);
+    // The clicked button still has focus at this point, and the browser's
+    // own focus-follows-scroll behavior fires on the next frame — calling
+    // scrollIntoView synchronously here gets silently overridden by that
+    // once the click's re-render settles. Blur first, then defer past two
+    // frames so our scroll is the last thing that happens, not the first.
+    (document.activeElement as HTMLElement | null)?.blur();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById(CONTENT_CARD_ID)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    });
+  }
+
+  function addOne(idx: number, item: ResearchResultItem) {
+    onAddToContent([researchLine(item)]);
+    setJustAdded(idx);
+    window.setTimeout(() => setJustAdded((prev) => (prev === idx ? null : prev)), 1400);
+    flashConfirmation(1);
+  }
+
+  function addSelected() {
+    if (!results || selected.size === 0) return;
+    const picked = [...selected].sort((a, b) => a - b).map((idx) => researchLine(results[idx]));
+    onAddToContent(picked);
+    flashConfirmation(picked.length);
+    clearSelection();
   }
 
   async function run() {
@@ -269,6 +388,7 @@ function ResearchTrigger() {
     setRunning(true);
     setError(null);
     setResults(null);
+    setSelected(new Set());
     try {
       const result = await triggerResearchWorkflow(query.trim(), sources.length ? sources : null, limitPerSource);
       setResults(Array.isArray(result.results) ? (result.results as ResearchResultItem[]) : []);
@@ -294,16 +414,7 @@ function ResearchTrigger() {
             </label>
           ))}
         </div>
-        <label className="actor-field">
-          Results per source
-          <input
-            type="text"
-            inputMode="numeric"
-            value={limitPerSource}
-            onChange={(e) => setLimitPerSource(Number(e.target.value.replace(/\D/g, "")) || 1)}
-            style={{ width: "4rem" }}
-          />
-        </label>
+        <NumberStepper label="Results per source" value={limitPerSource} onChange={setLimitPerSource} min={1} max={25} />
         <button type="button" onClick={() => void run()} disabled={running || !query.trim()}>
           {running ? "Researching…" : "Run research"}
         </button>
@@ -314,25 +425,76 @@ function ResearchTrigger() {
           {results.length === 0 ? (
             <p className="result-footnote">No results came back.</p>
           ) : (
-            <ul className="research-list">
-              {results.map((item, idx) => (
-                <li key={`${item.source}-${idx}`}>
-                  <span className="source-chip">{item.source}</span>
-                  <a href={item.url} target="_blank" rel="noreferrer">
-                    {item.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="research-toolbar">
+                <span className="research-toolbar-count">
+                  {selected.size > 0 ? `${selected.size} selected` : `${results.length} results`}
+                </span>
+                <div className="research-toolbar-actions">
+                  <button type="button" className="research-toolbar-btn" onClick={selectAll} disabled={selected.size === results.length}>
+                    Select all
+                  </button>
+                  {selected.size > 0 && (
+                    <button type="button" className="research-toolbar-btn" onClick={clearSelection}>
+                      Clear
+                    </button>
+                  )}
+                  <button type="button" className="research-send-btn" onClick={addSelected} disabled={selected.size === 0}>
+                    Add {selected.size > 0 ? selected.size : ""} to Content <ArrowDown size={13} />
+                  </button>
+                </div>
+              </div>
+              <ul className="research-list">
+                {results.map((item, idx) => (
+                  <li key={`${item.source}-${idx}`} className={selected.has(idx) ? "research-item-selected" : undefined}>
+                    <label className="research-item-check">
+                      <input type="checkbox" checked={selected.has(idx)} onChange={() => toggleSelected(idx)} />
+                    </label>
+                    <span className="source-chip">{item.source}</span>
+                    <a href={item.url} target="_blank" rel="noreferrer">
+                      {item.title}
+                    </a>
+                    <button
+                      type="button"
+                      className="research-item-add"
+                      onClick={() => addOne(idx, item)}
+                      title="Add just this one to the Content workflow"
+                      aria-label={`Add "${item.title}" to the Content workflow`}
+                    >
+                      {justAdded === idx ? <Check size={13} /> : <Plus size={13} />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}
+      <AnimatePresence>
+        {justAddedCount !== null && (
+          <motion.p
+            className="research-added-toast"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          >
+            <Check size={13} /> Added {justAddedCount} {justAddedCount === 1 ? "topic" : "topics"} to the Content
+            workflow below.
+          </motion.p>
+        )}
+      </AnimatePresence>
     </article>
   );
 }
 
-function ContentTrigger() {
-  const [calendarEntries, setCalendarEntries] = useState("");
+function ContentTrigger({
+  calendarEntries,
+  setCalendarEntries,
+}: {
+  calendarEntries: string;
+  setCalendarEntries: (value: string) => void;
+}) {
   const [recentTopics, setRecentTopics] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -352,16 +514,16 @@ function ContentTrigger() {
   }
 
   return (
-    <article className="card">
+    <article className="card" id={CONTENT_CARD_ID}>
       <h3>Content (Strategist → Writer)</h3>
       <p className="card-meta">Chains a fresh brief straight into a draft — lands in the approval queue or flags needs_human_rewrite.</p>
       <ErrorBanner message={error} />
       <div className="card-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
         <textarea
-          placeholder="Content calendar entries, one per line (optional)"
+          placeholder="Content calendar entries, one per line (optional) — or add topics straight from Research above"
           value={calendarEntries}
           onChange={(e) => setCalendarEntries(e.target.value)}
-          rows={2}
+          rows={Math.max(2, Math.min(6, lines(calendarEntries).length + 1))}
         />
         <textarea
           placeholder="Recent post topics to avoid repeating, one per line (optional)"
@@ -458,6 +620,20 @@ function EngagementTrigger() {
 }
 
 export function WorkflowsView() {
+  // Shared with ResearchTrigger below so a click there can hand topics
+  // straight to Content's calendar-entries field instead of the user
+  // re-typing or copy-pasting them across two independent cards.
+  const [calendarEntries, setCalendarEntries] = useState("");
+
+  function addToCalendar(newLines: string[]) {
+    setCalendarEntries((prev) => {
+      const existing = lines(prev);
+      const merged = [...existing];
+      for (const line of newLines) if (!merged.includes(line)) merged.push(line);
+      return merged.join("\n");
+    });
+  }
+
   return (
     <section>
       <div className="view-header">
@@ -468,8 +644,8 @@ export function WorkflowsView() {
         live progress while one runs.
       </p>
       <div className="card-list">
-        <ResearchTrigger />
-        <ContentTrigger />
+        <ResearchTrigger onAddToContent={addToCalendar} />
+        <ContentTrigger calendarEntries={calendarEntries} setCalendarEntries={setCalendarEntries} />
         <AnalyticsTrigger />
         <EngagementTrigger />
       </div>

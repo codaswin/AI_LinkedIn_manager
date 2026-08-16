@@ -28,7 +28,13 @@ SYSTEM_PROMPT = (
     "itself. Given the content calendar, recent trending-topic research "
     "(including the Research Agent's X findings), and the last 30 days of "
     "published posts, produce ONE structured brief: topic, angle, target "
-    "format (text/article/poll), and target publish date. Leave target publish "
+    "format (text/article/poll), and target publish date. "
+    "If the content calendar lists specific entries, your topic MUST be drawn "
+    "from one of them (verbatim, or a close variation) — a human chose those "
+    "entries deliberately, so treat them as the assignment, not as one signal "
+    "among several to weigh against your own ideas. Only fall back to "
+    "inventing a topic yourself when the calendar is empty; then use the "
+    "retrieved research below to pick something fresh. Leave target publish "
     "date null by default — that means the post publishes as soon as a human "
     "approves it, which is what a human clicking 'approve' expects. Only set "
     "an explicit future date when the content calendar names one; never invent "
@@ -125,6 +131,12 @@ async def build_post_brief(
     )
     grounding_context = _dedupe_against_recent_posts(hits, recent_post_topics)
 
+    calendar_block = (
+        "\n".join(f"- {entry}" for entry in calendar_entries)
+        if calendar_entries
+        else "(none — pick a fresh topic from the retrieved research context instead)"
+    )
+
     config = build_run_config()
     state = AgentState(
         task_id="content-strategist-plan",
@@ -132,10 +144,14 @@ async def build_post_brief(
         current_task=(
             f"Today's date is {datetime.now(tz=timezone.utc).date().isoformat()}. Produce exactly one PostBrief as a JSON "
             "object with keys topic, angle, format (text/article/poll), and target_publish_date "
-            "(ISO date or null), for the next LinkedIn post. Default target_publish_date to null "
-            "so the post publishes immediately once a human approves it. Only set a future date if "
-            "the content calendar entries below explicitly name one — if you do, it must be a real "
-            "date after today, never guessed without today's date as your reference point."
+            "(ISO date or null), for the next LinkedIn post.\n\n"
+            "Content calendar entries (choose your topic from this list if it's non-empty — "
+            "these were selected deliberately, do not substitute a different topic of your own "
+            f"while any of these are available and unused in the last 30 days):\n{calendar_block}\n\n"
+            "Default target_publish_date to null so the post publishes immediately once a human "
+            "approves it. Only set a future date if one of the calendar entries above explicitly "
+            "names one — if you do, it must be a real date after today, never guessed without "
+            "today's date as your reference point."
         ),
         scratchpad={
             "calendar_entries": calendar_entries,

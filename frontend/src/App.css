@@ -138,6 +138,105 @@
   border-radius: 4px;
 }
 
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.stepper-label {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.stepper-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.stepper-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+}
+
+.stepper-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.stepper-value {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 2.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0 0.4rem;
+  height: 36px;
+  align-items: center;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.stepper-control {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.stepper-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text-h);
+}
+
+.stepper-btn:first-child { border-right: 1px solid var(--border); }
+.stepper-btn:last-child { border-left: 1px solid var(--border); }
+
+.stepper-btn:hover:not(:disabled) { background: var(--surface-2); }
+.stepper-btn:disabled { color: var(--text-soft); opacity: 0.4; }
+
+.stepper-value {
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+  background: var(--surface);
+}
+
 .theme-toggle {
   border-radius: 999px;
   padding: 0.4rem 0.9rem;
@@ -565,9 +664,117 @@
 
 .research-list li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.55rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
   font-size: 0.85rem;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.research-list li:hover {
+  background: var(--surface-2);
+}
+
+.research-item-selected {
+  background: var(--accent-bg);
+}
+
+.research-item-check {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.research-list a {
+  flex: 1;
+  min-width: 0;
+}
+
+/* One-click hand-off to the Content workflow below — hidden until hovered
+   (or focused, for keyboard users) so the list doesn't look cluttered with
+   controls at rest, per the design skill's "advanced options one level
+   deeper" simplicity rule. */
+.research-item-add {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.research-list li:hover .research-item-add,
+.research-item-add:focus-visible {
+  opacity: 1;
+}
+
+.research-item-add:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.research-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.research-toolbar-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.research-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.research-toolbar-btn {
+  min-height: 28px;
+  padding: 0 0.6rem;
+  font-size: 0.76rem;
+  color: var(--text);
+}
+
+.research-send-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 0.65rem;
+  font-size: 0.76rem;
+  color: var(--invert-fg);
+  background: var(--invert-bg);
+  border-color: var(--invert-bg);
+}
+
+.research-send-btn:hover:not(:disabled) {
+  background: var(--invert-bg-hover);
+  border-color: var(--invert-bg-hover);
+}
+
+.research-added-toast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--success);
 }
 
 .source-chip {
@@ -995,8 +1202,12 @@ input[type="text"]:focus,input[type="date"]:focus,input[type="password"]:focus,t
   .arg-row dd { overflow-wrap: anywhere; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stat-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
-  .research-list li { align-items: flex-start; flex-direction: column; gap: 4px; }
-  .research-list a { max-width: 100%; overflow-wrap: anywhere; }
+  .research-list li { flex-wrap: wrap; }
+  .research-list a { max-width: 100%; overflow-wrap: anywhere; flex-basis: 100%; order: 3; }
+  .research-item-add { opacity: 1; order: 4; margin-left: auto; }
+  .research-toolbar { flex-direction: column; align-items: stretch; }
+  .research-toolbar-actions { flex-wrap: wrap; }
+  .research-send-btn { flex: 1 1 auto; justify-content: center; }
   .connection-required-badge { display: table; margin: 6px 0 0; }
   .source-checkboxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .source-checkbox { min-height: 36px; }

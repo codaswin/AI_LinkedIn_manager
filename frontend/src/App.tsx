@@ -11,6 +11,7 @@ import { ApprovalQueueView } from "./views/ApprovalQueueView";
 import { BrandVoiceView } from "./views/BrandVoiceView";
 import { ConnectionsView } from "./views/ConnectionsView";
 import { CostView } from "./views/CostView";
+import { LandingPage } from "./views/LandingPage";
 import { LearningProposalsView } from "./views/LearningProposalsView";
 import { SettingsView } from "./views/SettingsView";
 import { WorkflowsView } from "./views/WorkflowsView";
@@ -169,6 +170,9 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
 function AuthenticatedApp() {
   const [session, setSession] = useState<DashboardSession | null>(null);
   const [checking, setChecking] = useState(true);
+  // Signed-out visitors land on the marketing page first; returning users
+  // with a live session skip straight past it into the dashboard.
+  const [pastLanding, setPastLanding] = useState(false);
 
   useEffect(() => {
     getCurrentSession()
@@ -178,8 +182,9 @@ function AuthenticatedApp() {
   }, []);
 
   if (checking) return <div className="auth-loading"><span className="auth-spinner" /><span>Checking session</span></div>;
-  if (!session) return <LoginScreen onAuthenticated={setSession} />;
-  return <Dashboard session={session} onSignedOut={() => setSession(null)} />;
+  if (session) return <Dashboard session={session} onSignedOut={() => { setSession(null); setPastLanding(false); }} />;
+  if (!pastLanding) return <LandingPage onEnter={() => setPastLanding(true)} />;
+  return <LoginScreen onAuthenticated={setSession} />;
 }
 
 export default function App() {
