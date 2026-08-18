@@ -699,6 +699,10 @@ docker compose up --build
 
 The backend container runs `alembic upgrade head` before starting Uvicorn. Runtime table creation is disabled by default; set `AUTO_CREATE_SCHEMA=true` only for isolated local or test databases. Docker Compose persists the generation-based FAISS store in the `vector_data` volume.
 
+For a public VPS test deployment with Caddy-managed HTTPS, private database
+networking, Docker secrets, and automated backups, follow
+[`deploy/README.md`](deploy/README.md).
+
 ---
 
 ## Dashboard (Frontend)

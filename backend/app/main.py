@@ -69,6 +69,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = structlog.get_logger(__name__)
 
 
+def _production_mode() -> bool:
+    return os.environ.get("PRODUCTION_MODE", "false").lower() in {"1", "true", "yes"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Every tools/*.py module registers itself with tools.registry as a side
@@ -101,6 +105,9 @@ app = FastAPI(
     description="Runtime API for agent settings, the human-approval queue, and the self-learning review queue.",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None if _production_mode() else "/docs",
+    redoc_url=None if _production_mode() else "/redoc",
+    openapi_url=None if _production_mode() else "/openapi.json",
 )
 
 @app.middleware("http")

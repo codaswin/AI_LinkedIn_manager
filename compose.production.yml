@@ -1,0 +1,256 @@
+name: ai-linkedin-manager
+
+x-backend-environment: &backend-environment
+  PRODUCTION_MODE: "true"
+  DATABASE_URL_FILE: /run/secrets/database_url
+  REDIS_URL: redis://redis:6379/0
+  VECTOR_DB_PATH: /data/faiss_index
+  COMPOSIO_CACHE_DIR: /tmp/composio
+  SESSION_COOKIE_SECURE: "true"
+  CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in deploy/production.env}
+  DASHBOARD_ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:-admin}
+  DASHBOARD_ADMIN_PASSWORD_FILE: /run/secrets/dashboard_admin_password
+  CREDENTIAL_ENCRYPTION_KEY_FILE: /run/secrets/credential_encryption_key
+  COMPOSIO_API_KEY_FILE: /run/secrets/composio_api_key
+  OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+  ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+  REDDIT_CLIENT_SECRET_FILE: /run/secrets/reddit_client_secret
+  GITHUB_TOKEN_FILE: /run/secrets/github_token
+  PRODUCTHUNT_TOKEN_FILE: /run/secrets/producthunt_token
+  BRAVE_SEARCH_API_KEY_FILE: /run/secrets/brave_search_api_key
+  SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+  DASHBOARD_LOGIN_MAX_ATTEMPTS: ${DASHBOARD_LOGIN_MAX_ATTEMPTS:-5}
+  DASHBOARD_LOGIN_WINDOW_SECONDS: ${DASHBOARD_LOGIN_WINDOW_SECONDS:-900}
+  LLM_PROVIDER: ${LLM_PROVIDER:-}
+  OPENAI_MODEL_PRIMARY: ${OPENAI_MODEL_PRIMARY:-gpt-4o-mini}
+  OPENAI_MODEL_CHEAP: ${OPENAI_MODEL_CHEAP:-gpt-4o-mini}
+  ANTHROPIC_MODEL_PRIMARY: ${ANTHROPIC_MODEL_PRIMARY:-claude-sonnet-5}
+  ANTHROPIC_MODEL_CHEAP: ${ANTHROPIC_MODEL_CHEAP:-claude-haiku-4-5}
+  LLM_COST_BUDGET_DAILY_USD: ${LLM_COST_BUDGET_DAILY_USD:-10}
+  WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-duckduckgo}
+
+x-backend-secrets: &backend-secrets
+  - database_url
+  - dashboard_admin_password
+  - credential_encryption_key
+  - composio_api_key
+  - openai_api_key
+  - anthropic_api_key
+  - reddit_client_secret
+  - github_token
+  - producthunt_token
+  - brave_search_api_key
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in deploy/production.env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in deploy/production.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+      - app
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend-environment
+    secrets: *backend-secrets
+    expose:
+      - "8000"
+    volumes:
+      - vector_data:/data/faiss_index
+    networks:
+      - app
+      - data
+      - egress
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: linkedin
+      POSTGRES_DB: linkedin_manager
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkedin -d linkedin_manager"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command: ["/scripts/backup-loop.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: linkedin
+      PGDATABASE: linkedin_manager
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    secrets:
+      - postgres_password
+    volumes:
+      - ./deploy/scripts:/scripts:ro
+      - vector_data:/vector-data:ro
+      - backup_data:/backups
+    networks:
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/backup-service-ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+
+  restore:
+    image: postgres:17-alpine
+    profiles: ["restore"]
+    entrypoint: ["/scripts/restore.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: linkedin
+      PGDATABASE: linkedin_manager
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - ./deploy/scripts:/scripts:ro
+      - vector_data:/vector-data
+      - backup_data:/backups:ro
+    networks:
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+
+networks:
+  edge:
+  app:
+    internal: true
+  egress:
+  data:
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  vector_data:
+  backup_data:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  postgres_password:
+    file: ./deploy/secrets/postgres_password
+  database_url:
+    file: ./deploy/secrets/database_url
+  dashboard_admin_password:
+    file: ./deploy/secrets/dashboard_admin_password
+  credential_encryption_key:
+    file: ./deploy/secrets/credential_encryption_key
+  composio_api_key:
+    file: ./deploy/secrets/composio_api_key
+  openai_api_key:
+    file: ./deploy/secrets/openai_api_key
+  anthropic_api_key:
+    file: ./deploy/secrets/anthropic_api_key
+  reddit_client_secret:
+    file: ./deploy/secrets/reddit_client_secret
+  github_token:
+    file: ./deploy/secrets/github_token
+  producthunt_token:
+    file: ./deploy/secrets/producthunt_token
+  brave_search_api_key:
+    file: ./deploy/secrets/brave_search_api_key
