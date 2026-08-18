@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
-import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, UserRound, Workflow, X } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, Command, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, UserRound, Workflow, X } from "lucide-react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import "./App.css";
 import { ApiError, getCurrentSession, login, logout } from "./api";
@@ -147,7 +147,14 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
         </div>
       </aside>
       <main className="app-main">
-        <div className="page-context"><span className="page-context-icon"><ActiveIcon size={18} /></span><span>{active.group}</span><ChevronRight size={13} /><strong>{active.label}</strong></div>
+        <header className="workspace-header">
+          <div className="page-context"><span>{active.group}</span><ChevronRight size={13} /><strong>{active.label}</strong></div>
+          <div className="workspace-heading">
+            <span className="workspace-heading-icon"><ActiveIcon size={22} /></span>
+            <div><h1>{active.label}</h1><p>{active.description}</p></div>
+            <span className="workspace-mode"><Command size={13} /> Human controlled</span>
+          </div>
+        </header>
         {/* popLayout takes the outgoing view out of flow immediately so the
             incoming one doesn't wait on it — switching tabs mid-animation
             redirects cleanly instead of queuing (design skill §3). */}

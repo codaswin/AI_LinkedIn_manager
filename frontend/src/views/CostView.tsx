@@ -30,7 +30,6 @@ export function CostView() {
   return (
     <section>
       <div className="view-header">
-        <h2>LLM Cost — Today</h2>
         <button type="button" onClick={() => void refresh()} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>

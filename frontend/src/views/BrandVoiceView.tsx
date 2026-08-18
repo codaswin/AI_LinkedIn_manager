@@ -65,7 +65,6 @@ export function BrandVoiceView() {
   return (
     <section>
       <div className="view-header">
-        <h2>Brand Voice</h2>
         <button type="button" onClick={() => void refresh()} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>

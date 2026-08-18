@@ -149,7 +149,6 @@ export function ConnectionsView() {
   return (
     <section>
       <div className="view-header">
-        <h2>Connections</h2>
         <button type="button" onClick={() => void refresh()} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>

@@ -1492,7 +1492,7 @@ textarea { line-height: 1.5; }
 .source-toggle-active::after { opacity: 1; animation: source-magic-sweep 620ms var(--ease-critical) both; }
 .source-toggle-label { position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-toggle-state {
-  position: relative; z-index: 1; display: grid; width: 17px; height: 17px; flex: 0 0 17px; place-items: center;
+  position: relative; z-index: 1; display: grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center;
   color: var(--accent); border-radius: 50%; background: color-mix(in srgb, var(--accent) 13%, var(--surface));
 }
 .source-toggle-state::before, .source-toggle-state::after {
@@ -1501,7 +1501,7 @@ textarea { line-height: 1.5; }
 }
 .source-toggle-state::before { top: -2px; right: 1px; }
 .source-toggle-state::after { bottom: 0; left: -2px; animation-delay: 70ms; }
-.source-toggle-dot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--border-strong); }
+.source-toggle-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--border-strong); }
 @keyframes source-magic-sweep {
   0% { transform: translateX(-115%); }
   100% { transform: translateX(115%); }
@@ -1512,8 +1512,8 @@ textarea { line-height: 1.5; }
   100% { opacity: 0; transform: scale(1.25) translate(4px, -5px); }
 }
 @media (max-width: 520px) {
-  .source-checkboxes { display: flex; }
-  .source-toggle { min-height: 32px; }
+  .source-checkboxes { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .source-toggle { min-height: 42px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .source-toggle-active::after, .source-toggle-state::before, .source-toggle-state::after { animation: none; }

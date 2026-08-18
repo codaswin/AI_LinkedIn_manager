@@ -88,7 +88,6 @@ export function LearningProposalsView() {
   return (
     <section>
       <div className="view-header">
-        <h2>Self-Learning Review Queue</h2>
         <div className="header-actions">
           <button type="button" onClick={() => void handleReflectNow()} disabled={reflecting}>
             {reflecting ? "Reflecting…" : "Run reflection now"}

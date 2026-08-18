@@ -94,7 +94,6 @@ export function SettingsView() {
   return (
     <section>
       <div className="view-header">
-        <h2>Agent Settings</h2>
       </div>
       <p className="empty-state">
         Settings are stored per key (no bulk listing endpoint) — the known key below is always shown; look up any

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, Check, Minus, Plus } from "lucide-react";
+import { ArrowDown, Check, Minus, Plus, Sparkles } from "lucide-react";
 import {
   triggerAnalyticsWorkflow,
   triggerContentWorkflow,
@@ -406,12 +406,41 @@ function ResearchTrigger({ onAddToContent }: { onAddToContent: (lines: string[])
       <ErrorBanner message={error} />
       <div className="card-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
         <input type="text" placeholder="Topic to research, e.g. AI agents" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <div className="source-checkboxes">
+        <div className="source-checkboxes" role="group" aria-label="Research sources">
           {RESEARCH_SOURCES.map((source) => (
-            <label key={source} className="source-checkbox">
-              <input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} />
-              {source}
-            </label>
+            <motion.button
+              key={source}
+              type="button"
+              className={sources.includes(source) ? "source-toggle source-toggle-active" : "source-toggle"}
+              onClick={() => toggleSource(source)}
+              aria-pressed={sources.includes(source)}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 520, damping: 34 }}
+            >
+              <span className="source-toggle-label">{source}</span>
+              <AnimatePresence mode="wait" initial={false}>
+                {sources.includes(source) ? (
+                  <motion.span
+                    key="active"
+                    className="source-toggle-state"
+                    initial={{ opacity: 0, scale: 0.35, rotate: -90 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    exit={{ opacity: 0, scale: 0.35, rotate: 90 }}
+                    transition={{ type: "spring", stiffness: 560, damping: 28 }}
+                  >
+                    <Sparkles size={12} />
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="idle"
+                    className="source-toggle-dot"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  />
+                )}
+              </AnimatePresence>
+            </motion.button>
           ))}
         </div>
         <NumberStepper label="Results per source" value={limitPerSource} onChange={setLimitPerSource} min={1} max={25} />
@@ -635,10 +664,7 @@ export function WorkflowsView() {
   }
 
   return (
-    <section>
-      <div className="view-header">
-        <h2>Manual Workflow Triggers</h2>
-      </div>
+    <section className="workflow-command-center">
       <p className="empty-state">
         Fires the same agent entrypoints the scheduler calls automatically — watch the activity strip above for
         live progress while one runs.

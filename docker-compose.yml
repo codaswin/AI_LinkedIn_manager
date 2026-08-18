@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: linkedin
       POSTGRES_DB: linkedin_manager
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,6 +35,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://linkedin:linkedin@postgres:5432/linkedin_manager
       REDIS_URL: redis://redis:6379/0
       VECTOR_DB_PATH: /data/faiss_index
+      COMPOSIO_CACHE_DIR: /tmp/composio
       SESSION_COOKIE_SECURE: "false"
     ports:
       - "8010:8000"
