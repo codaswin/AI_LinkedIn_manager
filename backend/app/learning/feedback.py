@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.models.feedback import FeedbackRecord
+from app.tenancy.context import get_current_user_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +44,7 @@ async def capture_feedback(
 ) -> FeedbackRecord:
     record = FeedbackRecord(
         id=str(uuid.uuid4()),
+        user_id=get_current_user_id(),
         task_id=task_id,
         agent_name=agent_name,
         signal_type=signal_type,
@@ -60,7 +62,11 @@ async def recent_negative_feedback(db: AsyncSession, days: int = 7) -> list[Feed
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         select(FeedbackRecord)
-        .where(FeedbackRecord.signal_type.in_(_NEGATIVE_SIGNAL_TYPES), FeedbackRecord.created_at >= cutoff)
+        .where(
+            FeedbackRecord.signal_type.in_(_NEGATIVE_SIGNAL_TYPES),
+            FeedbackRecord.created_at >= cutoff,
+            FeedbackRecord.user_id == get_current_user_id(),
+        )
         .order_by(FeedbackRecord.created_at.desc())
     )
     return list(result.scalars().all())
@@ -70,7 +76,11 @@ async def recent_engagement_outcomes(db: AsyncSession, days: int = 7) -> list[Fe
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         select(FeedbackRecord)
-        .where(FeedbackRecord.signal_type == SIGNAL_ENGAGEMENT_OUTCOME, FeedbackRecord.created_at >= cutoff)
+        .where(
+            FeedbackRecord.signal_type == SIGNAL_ENGAGEMENT_OUTCOME,
+            FeedbackRecord.created_at >= cutoff,
+            FeedbackRecord.user_id == get_current_user_id(),
+        )
         .order_by(FeedbackRecord.created_at.desc())
     )
     return list(result.scalars().all())

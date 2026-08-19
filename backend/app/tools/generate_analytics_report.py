@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from app.database import get_session_factory
 from app.models.episode import PostEpisode
+from app.tenancy.context import get_current_user_id
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -34,7 +35,11 @@ async def build_report(db: AsyncSession, args: GenerateAnalyticsReportArgs) -> d
     end_at = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc)
     result = await db.execute(
         select(PostEpisode)
-        .where(PostEpisode.published_at >= start_at, PostEpisode.published_at < end_at)
+        .where(
+            PostEpisode.published_at >= start_at,
+            PostEpisode.published_at < end_at,
+            PostEpisode.entity_id == get_current_user_id(),
+        )
         .order_by(PostEpisode.published_at.desc())
     )
     posts = list(result.scalars())

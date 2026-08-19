@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from app.models.brand_voice import BrandVoiceRecord
 from app.rag.ingest import ingest_style_guide, remove_document
+from app.tenancy.context import get_current_user_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +30,7 @@ async def create_brand_voice(
     if not content.strip():
         raise ValueError("Brand voice content must be non-empty")
 
-    record = BrandVoiceRecord(id=str(uuid.uuid4()), title=title, content=content)
+    record = BrandVoiceRecord(id=str(uuid.uuid4()), user_id=get_current_user_id(), title=title, content=content)
     db.add(record)
     await db.commit()
     await db.refresh(record)
@@ -44,19 +45,28 @@ async def create_brand_voice(
 
 
 async def list_brand_voices(db: AsyncSession) -> list[BrandVoiceRecord]:
-    result = await db.execute(select(BrandVoiceRecord).order_by(BrandVoiceRecord.created_at.desc()))
+    result = await db.execute(
+        select(BrandVoiceRecord)
+        .where(BrandVoiceRecord.user_id == get_current_user_id())
+        .order_by(BrandVoiceRecord.created_at.desc())
+    )
     return list(result.scalars().all())
 
 
 async def get_brand_voice(db: AsyncSession, brand_voice_id: str) -> BrandVoiceRecord | None:
-    return await db.get(BrandVoiceRecord, brand_voice_id)
+    record = await db.get(BrandVoiceRecord, brand_voice_id)
+    # A mismatched owner reads identically to "doesn't exist" — never confirms
+    # to a caller that some other user's brand voice exists at all.
+    if record is None or record.user_id != get_current_user_id():
+        return None
+    return record
 
 
 async def update_brand_voice(
     db: AsyncSession, brand_voice_id: str, *, title: str, content: str, index_path: str | None = None
 ) -> BrandVoiceRecord | None:
     record = await db.get(BrandVoiceRecord, brand_voice_id)
-    if record is None:
+    if record is None or record.user_id != get_current_user_id():
         return None
     if not title.strip():
         raise ValueError("Brand voice title must be non-empty")
@@ -83,7 +93,7 @@ async def update_brand_voice(
 
 async def delete_brand_voice(db: AsyncSession, brand_voice_id: str, *, index_path: str | None = None) -> bool:
     record = await db.get(BrandVoiceRecord, brand_voice_id)
-    if record is None:
+    if record is None or record.user_id != get_current_user_id():
         return False
     await db.delete(record)
     await db.commit()

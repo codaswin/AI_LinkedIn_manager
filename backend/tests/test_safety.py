@@ -6,12 +6,14 @@ from typing import Any
 import pytest
 from app.safety import approval_gate, guardrails, kill_switch
 from app.safety.audit import scan_ungated_approved_true
+from app.tenancy import context as tenancy_context
 from app.tools import registry as registry_module
 
 registry_module._import_all_tools()
 
 GATED_TOOL_NAME = "publish_post"
 NON_GATED_TOOL_NAME = "search_knowledge_base"
+_USER = "user-safety-test"
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +21,13 @@ def _reset_kill_switch():
     kill_switch.reset_for_testing()
     yield
     kill_switch.reset_for_testing()
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 class _FakeExecuteToolCall:
@@ -220,6 +229,36 @@ def test_audit_scan_flags_a_deliberately_introduced_violation(tmp_path: Path):
     assert len(violations) == 1
     assert "sneaky_agent.py" in violations[0]
     assert "approved=True" in violations[0]
+
+
+async def test_approvals_are_isolated_per_user(db_session, monkeypatch):
+    fake_execute = _FakeExecuteToolCall()
+    monkeypatch.setattr(approval_gate, "execute_tool", fake_execute)
+
+    request = await approval_gate.submit_for_approval(
+        db_session,
+        tool_name=GATED_TOOL_NAME,
+        arguments={"post_id": "post-owned-by-user-a"},
+        requested_by_agent="content_writer",
+        reason="ready",
+    )
+
+    other_user = "user-safety-test-other"
+    token = tenancy_context.set_current_user_id(other_user)
+    try:
+        assert all(p.id != request.id for p in await approval_gate.list_pending(db_session))
+        assert all(p.id != request.id for p in await approval_gate.list_actionable(db_session))
+        with pytest.raises(approval_gate.ApprovalRequestNotFoundError):
+            await approval_gate.approve(db_session, request.id, decided_by="intruder")
+        with pytest.raises(approval_gate.ApprovalRequestNotFoundError):
+            await approval_gate.reject(db_session, request.id, decided_by="intruder")
+    finally:
+        tenancy_context.reset_current_user_id(token)
+
+    # The original owner can still act on it normally.
+    assert any(p.id == request.id for p in await approval_gate.list_pending(db_session))
+    result = await approval_gate.approve(db_session, request.id, decided_by="human_operator")
+    assert result == {"status": "success"}
 
 
 async def test_failed_execution_is_recorded_and_retry_succeeds(db_session, monkeypatch):

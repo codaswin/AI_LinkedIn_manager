@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import os
 import threading
 import typing as t
+
+from app.tenancy.context import get_current_user_id
+from app.tenancy.credentials import resolve_credential
 
 _ComposioSDK: t.Any = None
 try:
@@ -16,36 +18,39 @@ class ComposioConfigError(RuntimeError):
 
 
 _client_lock = threading.Lock()
-_client: t.Any = None
+_clients: dict[str, t.Any] = {}
 
 
 def _require_env(name: str) -> str:
-    value = os.environ.get(name)
+    value = resolve_credential(name)
     if not value:
-        raise ComposioConfigError(f"{name} is not set. Set it in the environment before using any Composio-backed tool.")
+        raise ComposioConfigError(f"{name} is not set. Set it in the Connections page before using any Composio-backed tool.")
     return value
 
 
 def get_composio_client() -> t.Any:
-    global _client
-    if _client is not None:
-        return _client
+    user_id = get_current_user_id()
+    if user_id in _clients:
+        return _clients[user_id]
     with _client_lock:
-        if _client is not None:
-            return _client
+        if user_id in _clients:
+            return _clients[user_id]
         api_key = _require_env("COMPOSIO_API_KEY")
         if _ComposioSDK is None:
             raise ComposioConfigError(
                 "The 'composio' package is not installed. Add it to backend requirements to use Composio-backed tools."
             )
-        _client = _ComposioSDK(api_key=api_key)
-        return _client
+        client = _ComposioSDK(api_key=api_key)
+        _clients[user_id] = client
+        return client
 
 
-def reset_client_cache() -> None:
-    global _client
+def reset_client_cache(user_id: str | None = None) -> None:
     with _client_lock:
-        _client = None
+        if user_id is None:
+            _clients.clear()
+        else:
+            _clients.pop(user_id, None)
 
 
 def get_linkedin_connected_account_id() -> str:
@@ -62,12 +67,12 @@ def get_composio_entity_id() -> str:
     Composio calls this the "entity" — an identifier you choose to represent
     an end user when a connected account is created; Composio's own execute
     API rejects a call without it ("User ID is required with connected
-    account", verified live). This is a single-user tool, so one constant
-    value is enough — but it must match whatever entity_id was used when the
-    LinkedIn/X account was connected (see docs/composio-linkedin-setup, or
-    whatever created the connection), hence overridable rather than hardcoded.
+    account", verified live). Each dashboard user's own id doubles as their
+    Composio entity id, so their LinkedIn/X connected account (created
+    directly in Composio's own dashboard, outside this app) must be created
+    under that same entity id for this to resolve correctly.
     """
-    return os.environ.get("COMPOSIO_ENTITY_ID", "default")
+    return get_current_user_id()
 
 
 async def execute_linkedin_action(action_slug: str, arguments: dict[str, t.Any]) -> dict[str, t.Any]:

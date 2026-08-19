@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
 from app.tools import search_reddit
 from app.tools.registry import execute_tool
 from app.tools.search_reddit import RedditConfigError, SearchRedditArgs, execute
+
+_USER = "search-reddit-test-user"
 
 POST = {
     "id": "abc123",
@@ -26,10 +30,22 @@ def _clear_token_cache() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reddit_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("REDDIT_CLIENT_ID", "cid")
-    monkeypatch.setenv("REDDIT_CLIENT_SECRET", "csecret")
-    monkeypatch.setenv("REDDIT_USER_AGENT", "test-agent/1.0")
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
+
+
+@pytest.fixture(autouse=True)
+def _reddit_env(_tenancy_context: None) -> None:
+    # Explicitly depends on _tenancy_context so it always runs after that
+    # fixture's setup (which clears the overlay) — autouse fixtures with no
+    # declared dependency aren't guaranteed to run in file order.
+    tenancy_credentials.set_credential(_USER, "REDDIT_CLIENT_ID", "cid")
+    tenancy_credentials.set_credential(_USER, "REDDIT_CLIENT_SECRET", "csecret")
+    tenancy_credentials.set_credential(_USER, "REDDIT_USER_AGENT", "test-agent/1.0")
 
 
 async def test_successful_search_returns_normalized_results(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,8 +70,8 @@ async def test_successful_search_returns_normalized_results(monkeypatch: pytest.
     assert item["metadata"]["subreddit"] == "LocalLLaMA"
 
 
-async def test_missing_credentials_raise_config_error_and_sandbox_reports_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+async def test_missing_credentials_raise_config_error_and_sandbox_reports_error() -> None:
+    tenancy_credentials.clear_credential(_USER, "REDDIT_CLIENT_ID")
 
     from app.tools import registry as registry_module
 
@@ -66,15 +82,10 @@ async def test_missing_credentials_raise_config_error_and_sandbox_reports_error(
 
 
 async def test_missing_credentials_raises_directly() -> None:
-    import os
+    tenancy_credentials.clear_credential(_USER, "REDDIT_CLIENT_SECRET")
 
-    old = os.environ.pop("REDDIT_CLIENT_SECRET", None)
-    try:
-        with pytest.raises(RedditConfigError, match="REDDIT_CLIENT_SECRET"):
-            await execute(SearchRedditArgs(query="agentic AI"))
-    finally:
-        if old is not None:
-            os.environ["REDDIT_CLIENT_SECRET"] = old
+    with pytest.raises(RedditConfigError, match="REDDIT_CLIENT_SECRET"):
+        await execute(SearchRedditArgs(query="agentic AI"))
 
 
 async def test_dedupes_across_multiple_subreddits(monkeypatch: pytest.MonkeyPatch) -> None:

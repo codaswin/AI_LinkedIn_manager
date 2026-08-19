@@ -23,6 +23,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from app.llmops import cost_tracker
 from app.safety import guardrails
+from app.tenancy.context import reset_current_user_id, set_current_user_id
 from app.tools.registry import _import_all_tools, registry
 
 _REFUSAL_TOPIC_COUNT = 5
@@ -97,20 +98,29 @@ def check_cost_cap_hard_stop() -> list[str]:
     process, that going over budget raises rather than merely logging.
     Manipulates and then resets the audit-specific Redis cost key; safe because
     audit.py runs as a short-lived standalone process.
+
+    cost_tracker is per-user (see plans/peaceful-scribbling-tiger.md Stage 2)
+    and this script runs outside any HTTP request/scheduler job, so there's
+    no real dashboard user to act as — a synthetic id scoped to this one
+    check is set/reset around it.
     """
     errors: list[str] = []
-    budget = cost_tracker.get_cost_summary()["budget_usd"]
-    cost_tracker.record_cost(budget + 1_000_000.0)
+    token = set_current_user_id("safety-audit-cli")
     try:
-        cost_tracker.check_budget()
-        errors.append(
-            "cost_tracker.check_budget() did not raise once spend exceeded the daily budget "
-            "— the cost cap must hard-stop, not just log"
-        )
-    except cost_tracker.CostBudgetExceededError:
-        pass
+        budget = cost_tracker.get_cost_summary()["budget_usd"]
+        cost_tracker.record_cost(budget + 1_000_000.0)
+        try:
+            cost_tracker.check_budget()
+            errors.append(
+                "cost_tracker.check_budget() did not raise once spend exceeded the daily budget "
+                "— the cost cap must hard-stop, not just log"
+            )
+        except cost_tracker.CostBudgetExceededError:
+            pass
+        finally:
+            cost_tracker.reset_for_testing()
     finally:
-        cost_tracker.reset_for_testing()
+        reset_current_user_id(token)
     return errors
 
 

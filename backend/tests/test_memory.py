@@ -10,6 +10,18 @@ from app.memory.semantic import search as semantic_search
 from app.memory.semantic import write as semantic_write
 from app.memory.settings import get_setting, set_setting
 from app.models.episode import PostEpisodeCreate, ThreadEpisodeCreate
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    # agent_settings is per-user as of multi-tenant Stage 3 (see
+    # plans/peaceful-scribbling-tiger.md) — get_setting/set_setting below
+    # need a current user set even though this file's other fixtures don't
+    # otherwise touch tenancy.
+    token = tenancy_context.set_current_user_id("memory-test-user")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +228,27 @@ async def test_set_setting_round_trips_new_value(db_session):
     await set_setting(db_session, "research_agent.poll_interval", "hourly", updated_by="dashboard_ui:test")
     value = await get_setting(db_session, "research_agent.poll_interval")
     assert value == "hourly"
+
+
+async def test_agent_settings_are_isolated_per_user(db_session):
+    """Regression guard: agent_settings used to be one global row per key —
+
+    see plans/peaceful-scribbling-tiger.md Stage 3. Two users setting the
+    same key must never see each other's value.
+    """
+    token_a = tenancy_context.set_current_user_id("settings-user-a")
+    try:
+        await set_setting(db_session, "research_agent.poll_interval", "hourly", updated_by="dashboard_ui:test")
+    finally:
+        tenancy_context.reset_current_user_id(token_a)
+
+    token_b = tenancy_context.set_current_user_id("settings-user-b")
+    try:
+        # User B never set anything — still sees the in-code default, not
+        # user A's "hourly".
+        assert await get_setting(db_session, "research_agent.poll_interval") == "daily"
+    finally:
+        tenancy_context.reset_current_user_id(token_b)
 
 
 async def test_unknown_setting_key_returns_none(db_session):

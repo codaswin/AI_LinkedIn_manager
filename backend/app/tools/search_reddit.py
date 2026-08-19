@@ -10,13 +10,14 @@ one source gracefully rather than crashing the research run.
 from __future__ import annotations
 
 import asyncio
-import os
 import typing as t
 from datetime import datetime, timezone
 
 import httpx
 import structlog
 from app.agents.research_schema import ResearchResult
+from app.tenancy.context import get_current_user_id
+from app.tenancy.credentials import resolve_credential
 from app.tools.http_utils import TTLCache, request_with_retry
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field
@@ -48,9 +49,9 @@ class SearchRedditArgs(BaseModel):
 
 
 def _require_env(name: str) -> str:
-    value = os.environ.get(name)
+    value = resolve_credential(name)
     if not value:
-        raise RedditConfigError(f"{name} is not set. Set it in the environment before using search_reddit.")
+        raise RedditConfigError(f"{name} is not set. Set it on the Connections page before using search_reddit.")
     return value
 
 
@@ -75,7 +76,11 @@ async def _fetch_access_token(client: httpx.AsyncClient) -> str:
 
 
 async def _get_access_token(client: httpx.AsyncClient) -> str:
-    return await _token_cache.get_or_set("reddit:token", lambda: _fetch_access_token(client))
+    # Cache key includes the current user — each dashboard user has their
+    # own Reddit client credentials, so their OAuth tokens must never be
+    # shared across users the way a single global "reddit:token" key would.
+    cache_key = f"reddit:token:{get_current_user_id()}"
+    return await _token_cache.get_or_set(cache_key, lambda: _fetch_access_token(client))
 
 
 async def _search_one(

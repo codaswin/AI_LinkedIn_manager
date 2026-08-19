@@ -33,6 +33,14 @@ from app.learning.reflection_job import (
     run_reflection,
 )
 from app.llmops.prompt_registry import get_prompt, register_prompt
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-learning-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @pytest.fixture(autouse=True)
@@ -104,8 +112,8 @@ async def test_recent_negative_feedback_excludes_entries_older_than_window(db_se
 
     old_time = datetime.now(timezone.utc) - timedelta(days=30)
     stale = FeedbackRecord(
-        id="stale-1", task_id="old", agent_name="content_writer", signal_type=SIGNAL_REJECTED,
-        detail="ancient", created_at=old_time,
+        id="stale-1", user_id="user-learning-test", task_id="old", agent_name="content_writer",
+        signal_type=SIGNAL_REJECTED, detail="ancient", created_at=old_time,
     )
     db_session.add(stale)
     await db_session.commit()
@@ -131,6 +139,26 @@ async def test_recent_engagement_outcomes_filters_correctly(db_session) -> None:
     assert len(outcomes) == 1
     assert outcomes[0].task_id == "t2"
     assert outcomes[0].engagement_stats == {"likes": 42, "comments": 3}
+
+
+async def test_recent_negative_feedback_is_isolated_per_user(db_session) -> None:
+    """Regression guard: FeedbackRecord rows used to have no owner at all —
+
+    see plans/peaceful-scribbling-tiger.md Stage 3. User A's rejected
+    drafts must never show up in user B's reflection input.
+    """
+    token_a = tenancy_context.set_current_user_id("feedback-user-a")
+    try:
+        await capture_feedback(db_session, task_id="a1", agent_name="content_writer", signal_type=SIGNAL_REJECTED, detail="A's feedback")
+    finally:
+        tenancy_context.reset_current_user_id(token_a)
+
+    token_b = tenancy_context.set_current_user_id("feedback-user-b")
+    try:
+        negative = await recent_negative_feedback(db_session, days=7)
+        assert negative == []
+    finally:
+        tenancy_context.reset_current_user_id(token_b)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +268,38 @@ async def test_list_pending_excludes_decided_and_auto_applied(db_session) -> Non
 
     result = await list_pending(db_session)
     assert [p.id for p in result] == [pending.id]
+
+
+async def test_learning_proposals_are_isolated_per_user(db_session) -> None:
+    """Regression guard: submit_proposal/list_pending/approve_proposal used
+
+    to operate on one shared global queue — see
+    plans/peaceful-scribbling-tiger.md Stage 3. User A must never see or
+    act on user B's proposals.
+    """
+    token_a = tenancy_context.set_current_user_id("learning-user-a")
+    try:
+        proposal_a = await submit_proposal(
+            db_session, pattern="a", change_type="system_prompt", proposed_change="ca", confidence=0.5
+        )
+    finally:
+        tenancy_context.reset_current_user_id(token_a)
+
+    token_b = tenancy_context.set_current_user_id("learning-user-b")
+    try:
+        proposal_b = await submit_proposal(
+            db_session, pattern="b", change_type="system_prompt", proposed_change="cb", confidence=0.5
+        )
+
+        # User B's list only ever contains their own proposal.
+        assert [p.id for p in await list_pending(db_session)] == [proposal_b.id]
+
+        # User B cannot approve user A's proposal — reads as not-found, never
+        # confirms it exists.
+        with pytest.raises(ProposalNotFoundError):
+            await approve_proposal(db_session, proposal_a.id, decided_by="human:b")
+    finally:
+        tenancy_context.reset_current_user_id(token_b)
 
 
 # ---------------------------------------------------------------------------

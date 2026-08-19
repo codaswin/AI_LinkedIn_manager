@@ -10,6 +10,14 @@ from app.agents import research_pipeline
 from app.agents.research_schema import ResearchPackage, ResearchResult
 from app.harness.loop import ToolCallRequest
 from app.harness.state import AgentState
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-research-pipeline-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 NOW = datetime.now(timezone.utc)
 

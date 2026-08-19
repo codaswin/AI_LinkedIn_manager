@@ -10,6 +10,19 @@ from app.llmops.anthropic_client import (
     call_anthropic,
     reset_client_cache,
 )
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
+
+_USER = "anthropic-test-user"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
 
 
 @pytest.fixture(autouse=True)
@@ -95,14 +108,32 @@ async def test_call_anthropic_raises_when_no_tool_use_block(monkeypatch: pytest.
         await call_anthropic(model="claude-sonnet-5", system_prompt="sys", user_content="user")
 
 
-def test_missing_api_key_raises_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_missing_api_key_raises_config_error() -> None:
     with pytest.raises(AnthropicConfigError, match="ANTHROPIC_API_KEY"):
         anthropic_client._get_client()
 
 
-def test_client_is_cached_across_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+def test_client_is_cached_across_calls() -> None:
+    tenancy_credentials.set_credential(_USER, "ANTHROPIC_API_KEY", "test-key")
     first = anthropic_client._get_client()
     second = anthropic_client._get_client()
     assert first is second
+
+
+def test_client_cache_is_isolated_per_user() -> None:
+    other_user = "anthropic-other-user"
+    tenancy_credentials.clear_user(other_user)
+    tenancy_credentials.set_credential(_USER, "ANTHROPIC_API_KEY", "user-a-key")
+    tenancy_credentials.set_credential(other_user, "ANTHROPIC_API_KEY", "user-b-key")
+
+    mine = anthropic_client._get_client()
+
+    token = tenancy_context.set_current_user_id(other_user)
+    try:
+        theirs = anthropic_client._get_client()
+    finally:
+        tenancy_context.reset_current_user_id(token)
+        tenancy_credentials.clear_user(other_user)
+        anthropic_client.reset_client_cache(other_user)
+
+    assert mine is not theirs

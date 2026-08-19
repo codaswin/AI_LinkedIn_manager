@@ -6,6 +6,7 @@ import os
 from datetime import datetime, time, timedelta, timezone
 
 from app.shared_state import get_client
+from app.tenancy.context import get_current_user_id
 
 _DEFAULT_DAILY_BUDGET_USD = 10.0
 
@@ -25,7 +26,7 @@ def _today_key() -> str:
 
 
 def _redis_key() -> str:
-    return f"safety:cost:{_today_key()}"
+    return f"safety:cost:{get_current_user_id()}:{_today_key()}"
 
 
 def _ttl() -> int:

@@ -90,6 +90,11 @@ def session_ttl() -> timedelta:
     return timedelta(hours=max(1, min(hours, 168)))
 
 
+async def list_dashboard_users(db: AsyncSession) -> list[DashboardUserRecord]:
+    result = await db.execute(select(DashboardUserRecord).order_by(DashboardUserRecord.created_at))
+    return list(result.scalars().all())
+
+
 async def create_user(db: AsyncSession, username: str, password: str, role: Role = "viewer") -> DashboardUserRecord:
     normalized = username.strip().lower()
     if not normalized:
@@ -227,13 +232,14 @@ def require_role(request: Request, minimum: Role = "viewer") -> AuthenticatedUse
 
 
 def authorize_request(request: Request, user: AuthenticatedUser) -> None:
-    path = request.url.path
+    # Credentials, approvals, brand voice, etc. are no longer a single
+    # shared admin-only resource — every table they touch is scoped to
+    # request.state's current user (see app.tenancy.context), so a
+    # "viewer" role can safely read/manage their OWN data here. `admin`
+    # is checked separately, per-endpoint (see /admin/users in main.py),
+    # for the one thing that's still cross-tenant: inviting new users.
     method = request.method.upper()
-    minimum: Role = "viewer"
-    if path.startswith("/credentials"):
-        minimum = "admin"
-    elif method not in {"GET", "HEAD", "OPTIONS"}:
-        minimum = "operator"
+    minimum: Role = "viewer" if method in {"GET", "HEAD", "OPTIONS"} else "operator"
     if _ROLE_LEVEL[user.role] < _ROLE_LEVEL[minimum]:
         raise HTTPException(status_code=403, detail=f"{minimum} role required")
 

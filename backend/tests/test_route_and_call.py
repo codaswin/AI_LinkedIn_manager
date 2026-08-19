@@ -9,28 +9,32 @@ from app.llmops.hermes_client import HermesCallResult
 from app.llmops.model_router import RouteAndCallResponse, route_and_call
 from app.llmops.openai_client import OpenAICallResult
 from app.llmops.prompt_registry import register_prompt
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
+
+_USER = "user-route-and-call-test"
 
 
 @pytest.fixture(autouse=True)
 def _reset_cost_and_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    token = tenancy_context.set_current_user_id(_USER)
+    tenancy_credentials.clear_user(_USER)
     cost_tracker.reset_for_testing()
     tracer.reset_sink_for_testing()
     register_prompt("content_writer", "You are the Content Writer.")
     register_prompt("engagement", "You are the Engagement Agent.")
     # Every test in this file monkeypatches call_anthropic/call_openai/call_hermes
     # directly rather than hitting a real API — but model_router._hosted_provider()
-    # auto-detects the provider from whichever of these keys is actually present
-    # in the environment. Left unmocked, a real ANTHROPIC_API_KEY/OPENAI_API_KEY
-    # sitting in the ambient shell environment silently steers a test onto the
-    # OTHER provider's (unmocked) branch, which either fails confusingly or —
-    # worse — falls through to a real, billed API call. Clearing both plus
-    # LLM_PROVIDER makes provider selection deterministic regardless of what's
-    # exported in whatever shell actually runs this suite.
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    # auto-detects the provider from whichever key the current user has saved
+    # (via resolve_credential, not os.environ — see Stage 1/2 of
+    # plans/peaceful-scribbling-tiger.md). clear_user() above + never calling
+    # tenancy_credentials.set_credential() unless a test opts in makes provider
+    # selection deterministic regardless of what any other test left behind.
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     yield
     cost_tracker.reset_for_testing()
+    tenancy_credentials.clear_user(_USER)
+    tenancy_context.reset_current_user_id(token)
 
 
 def _state(**overrides) -> AgentState:
@@ -74,7 +78,7 @@ async def test_route_and_call_uses_anthropic_for_primary_tier(monkeypatch: pytes
 
 
 async def test_route_and_call_uses_openai_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
     captured = {}
 
     async def fake_call_openai(*, model, system_prompt, user_content):

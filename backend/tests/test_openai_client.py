@@ -11,6 +11,19 @@ from app.llmops.openai_client import (
     call_openai,
     reset_client_cache,
 )
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
+
+_USER = "openai-test-user"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
 
 
 @pytest.fixture(autouse=True)
@@ -130,14 +143,32 @@ async def test_call_openai_raises_when_no_matching_tool_call(monkeypatch: pytest
         await call_openai(model="gpt-4o-mini", system_prompt="sys", user_content="user")
 
 
-def test_missing_api_key_raises_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+def test_missing_api_key_raises_config_error() -> None:
     with pytest.raises(OpenAIConfigError, match="OPENAI_API_KEY"):
         openai_client._get_client()
 
 
-def test_client_is_cached_across_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+def test_client_is_cached_across_calls() -> None:
+    tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "test-key")
     first = openai_client._get_client()
     second = openai_client._get_client()
     assert first is second
+
+
+def test_client_cache_is_isolated_per_user() -> None:
+    other_user = "openai-other-user"
+    tenancy_credentials.clear_user(other_user)
+    tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "user-a-key")
+    tenancy_credentials.set_credential(other_user, "OPENAI_API_KEY", "user-b-key")
+
+    mine = openai_client._get_client()
+
+    token = tenancy_context.set_current_user_id(other_user)
+    try:
+        theirs = openai_client._get_client()
+    finally:
+        tenancy_context.reset_current_user_id(token)
+        tenancy_credentials.clear_user(other_user)
+        openai_client.reset_client_cache(other_user)
+
+    assert mine is not theirs

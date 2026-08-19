@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 import httpx
 import structlog
+from app.tenancy.credentials import resolve_credential
 from app.tools.http_utils import request_with_retry
 from ddgs import DDGS
 
@@ -132,7 +133,7 @@ def get_default_provider() -> WebSearchProvider:
     if provider_name == "duckduckgo":
         return DuckDuckGoWebSearchProvider()
     if provider_name == "brave":
-        api_key = os.environ.get("BRAVE_SEARCH_API_KEY")
+        api_key = resolve_credential("BRAVE_SEARCH_API_KEY")
         if not api_key:
             logger.warning("web_search_provider_unconfigured", provider=provider_name)
             return NullWebSearchProvider()

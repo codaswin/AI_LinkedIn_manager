@@ -8,6 +8,14 @@ from app.agents import engagement
 from app.harness.loop import ToolCallRequest
 from app.llmops import prompt_registry
 from app.llmops.model_router import route
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-engagement-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @dataclass

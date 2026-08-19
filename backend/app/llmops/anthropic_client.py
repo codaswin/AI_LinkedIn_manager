@@ -19,10 +19,11 @@ parsing contract changes because of this.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 import anthropic
+from app.tenancy.context import get_current_user_id
+from app.tenancy.credentials import resolve_credential
 
 RESPONSE_TOOL_NAME = "submit_agent_response"
 
@@ -56,7 +57,7 @@ RESPONSE_TOOL_SCHEMA: dict = {
 
 _DEFAULT_MAX_TOKENS = 4096
 
-_client: anthropic.AsyncAnthropic | None = None
+_clients: dict[str, anthropic.AsyncAnthropic] = {}
 
 
 class AnthropicConfigError(RuntimeError):
@@ -64,20 +65,29 @@ class AnthropicConfigError(RuntimeError):
 
 
 def _get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is not None:
-        return _client
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    user_id = get_current_user_id()
+    client = _clients.get(user_id)
+    if client is not None:
+        return client
+    api_key = resolve_credential("ANTHROPIC_API_KEY")
     if not api_key:
-        raise AnthropicConfigError("ANTHROPIC_API_KEY is not set. Set it in the environment before using route_and_call.")
-    _client = anthropic.AsyncAnthropic(api_key=api_key)
-    return _client
+        raise AnthropicConfigError("ANTHROPIC_API_KEY is not set. Set it on the Connections page before using route_and_call.")
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    _clients[user_id] = client
+    return client
 
 
-def reset_client_cache() -> None:
-    """Test-only: forces the client to be re-resolved (and re-check the env var) on next call."""
-    global _client
-    _client = None
+def reset_client_cache(user_id: str | None = None) -> None:
+    """Forces the client to be re-resolved (and re-check the credential) on next call.
+
+    Called automatically whenever a user saves/deletes their Anthropic key
+    (see app.memory.platform_credentials) — pass no user_id to clear every
+    cached client at once (used by test fixtures).
+    """
+    if user_id is None:
+        _clients.clear()
+    else:
+        _clients.pop(user_id, None)
 
 
 @dataclass

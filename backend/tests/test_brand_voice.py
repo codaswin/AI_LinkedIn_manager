@@ -3,6 +3,16 @@ from __future__ import annotations
 import pytest
 from app.memory import brand_voice
 from app.rag.retrieve import retrieve
+from app.tenancy import context as tenancy_context
+
+_USER = "user-brand-voice-test"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 async def test_create_persists_and_is_listable(db_session, faiss_index_path) -> None:
@@ -89,3 +99,29 @@ async def test_delete_removes_record_and_rag_entry(db_session, faiss_index_path)
 
 async def test_delete_returns_false_for_unknown_id(db_session) -> None:
     assert await brand_voice.delete_brand_voice(db_session, "does-not-exist") is False
+
+
+async def test_brand_voices_are_isolated_per_user(db_session, faiss_index_path) -> None:
+    record = await brand_voice.create_brand_voice(
+        db_session, title="User A Voice", content="belongs to user a", index_path=faiss_index_path
+    )
+
+    other_user = "user-brand-voice-test-other"
+    token = tenancy_context.set_current_user_id(other_user)
+    try:
+        assert await brand_voice.list_brand_voices(db_session) == []
+        assert await brand_voice.get_brand_voice(db_session, record.id) is None
+        assert (
+            await brand_voice.update_brand_voice(
+                db_session, record.id, title="hijacked", content="hijacked content", index_path=faiss_index_path
+            )
+            is None
+        )
+        assert await brand_voice.delete_brand_voice(db_session, record.id, index_path=faiss_index_path) is False
+    finally:
+        tenancy_context.reset_current_user_id(token)
+
+    # Untouched by the other user's attempts.
+    still_there = await brand_voice.get_brand_voice(db_session, record.id)
+    assert still_there is not None
+    assert still_there.title == "User A Voice"

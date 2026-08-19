@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
 from app.tools import search_github
 from app.tools.http_utils import HTTPSourceError
 from app.tools.registry import execute_tool
 from app.tools.search_github import SearchGitHubArgs, execute
+
+_USER = "search-github-test-user"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
+
 
 REPO = {
     "full_name": "someorg/agentic-framework",
@@ -47,14 +61,13 @@ async def test_successful_search_returns_normalized_results(monkeypatch: pytest.
     assert item["metadata"]["language"] == "Python"
 
 
-async def test_uses_github_token_header_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test123")
+async def test_uses_github_token_header_when_set() -> None:
+    tenancy_credentials.set_credential(_USER, "GITHUB_TOKEN", "ghp_test123")
     headers = search_github._headers()
     assert headers["Authorization"] == "Bearer ghp_test123"
 
 
-async def test_works_unauthenticated_when_no_token_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+async def test_works_unauthenticated_when_no_token_set() -> None:
     headers = search_github._headers()
     assert "Authorization" not in headers
 

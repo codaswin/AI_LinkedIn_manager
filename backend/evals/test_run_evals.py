@@ -10,6 +10,7 @@ from app.agents.content_writer import write_post
 from app.agents.engagement import handle_notification
 from app.harness.loop import ToolCallRequest
 from app.llmops.prompt_registry import register_prompt
+from app.tenancy import context as tenancy_context
 from evals.llm_judge import JUDGE_SYSTEM_PROMPT
 from evals.run_evals import (
     RegressionError,
@@ -21,6 +22,13 @@ from evals.run_evals import (
 )
 
 register_prompt("evals", JUDGE_SYSTEM_PROMPT)
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-evals-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @dataclass

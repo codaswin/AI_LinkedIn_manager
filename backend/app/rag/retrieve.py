@@ -1,15 +1,15 @@
 import asyncio
 from typing import Any, get_args
 
-from app.config import settings
 from app.rag.chunking import SourceType
 from app.rag.ingest import VectorStore, embed_texts
+from app.tenancy.paths import user_vector_store_path
 
 _VALID_SOURCE_TYPES = set(get_args(SourceType))
 
 
 def _resolve_path(index_path: str | None) -> str:
-    return index_path or settings.VECTOR_DB_PATH
+    return index_path or user_vector_store_path()
 
 
 def _retrieve_sync(

@@ -12,13 +12,17 @@ from sqlalchemy import select, update
 logger = structlog.get_logger(__name__)
 
 
-async def process_due_posts(now: datetime | None = None, limit: int = 20) -> dict[str, int]:
+async def process_due_posts(user_id: str, now: datetime | None = None, limit: int = 20) -> dict[str, int]:
     now = now or datetime.now(timezone.utc)
     factory = get_session_factory()
     async with factory() as db:
         result = await db.execute(
             select(ScheduledPostRecord.id)
-            .where(ScheduledPostRecord.status == "pending", ScheduledPostRecord.publish_at <= now)
+            .where(
+                ScheduledPostRecord.user_id == user_id,
+                ScheduledPostRecord.status == "pending",
+                ScheduledPostRecord.publish_at <= now,
+            )
             .order_by(ScheduledPostRecord.publish_at)
             .limit(limit)
         )

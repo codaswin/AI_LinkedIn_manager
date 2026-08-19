@@ -15,12 +15,12 @@ unavailable").
 
 from __future__ import annotations
 
-import os
 import typing as t
 from datetime import datetime
 
 import httpx
 from app.agents.research_schema import ResearchResult
+from app.tenancy.credentials import resolve_credential
 from app.tools.http_utils import request_with_retry
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field
@@ -62,9 +62,9 @@ class SearchProductHuntArgs(BaseModel):
 
 
 def _require_token() -> str:
-    token = os.environ.get("PRODUCTHUNT_TOKEN")
+    token = resolve_credential("PRODUCTHUNT_TOKEN")
     if not token:
-        raise ProductHuntConfigError("PRODUCTHUNT_TOKEN is not set. Set it in the environment before using search_producthunt.")
+        raise ProductHuntConfigError("PRODUCTHUNT_TOKEN is not set. Set it on the Connections page before using search_producthunt.")
     return token
 
 

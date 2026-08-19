@@ -14,6 +14,10 @@ from pathlib import Path
 import pytest
 from app.llmops import cost_tracker, prompt_registry, tracer
 from app.llmops.model_router import ModelProvider, ModelTier, route
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
+
+_USER = "user-llmops-test"
 
 
 @pytest.fixture(autouse=True)
@@ -26,15 +30,22 @@ def _reset_llmops_state(monkeypatch: pytest.MonkeyPatch) -> None:
     registry to empty after the last test in this file would permanently
     starve every later test file (in any collection order) that relies on
     those one-time registrations having survived.
+
+    ANTHROPIC_API_KEY/OPENAI_API_KEY drive model_router._hosted_provider()'s
+    auto-detect via resolve_credential() now (per-user, Stage 1/2 of
+    plans/peaceful-scribbling-tiger.md), not os.environ — a tenancy context
+    is set here and the per-user credential overlay is cleared so tests stay
+    deterministic; individual tests opt into a key via
+    tenancy_credentials.set_credential(_USER, ...).
     """
+    token = tenancy_context.set_current_user_id(_USER)
+    tenancy_credentials.clear_user(_USER)
     cost_tracker.reset_for_testing()
     prompt_snapshot = prompt_registry.snapshot_for_testing()
     prompt_registry.reset_for_testing()
     tracer.reset_sink_for_testing()
     monkeypatch.delenv("LLM_COST_BUDGET_DAILY_USD", raising=False)
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL_PRIMARY", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL_CHEAP", raising=False)
     monkeypatch.delenv("OPENAI_MODEL_PRIMARY", raising=False)
@@ -46,6 +57,8 @@ def _reset_llmops_state(monkeypatch: pytest.MonkeyPatch) -> None:
     cost_tracker.reset_for_testing()
     prompt_registry.restore_for_testing(prompt_snapshot)
     tracer.reset_sink_for_testing()
+    tenancy_credentials.clear_user(_USER)
+    tenancy_context.reset_current_user_id(token)
 
 
 # ---------------------------------------------------------------------------
@@ -133,19 +146,19 @@ class TestProviderSelection:
         assert config.provider is ModelProvider.ANTHROPIC
 
     def test_auto_detects_openai_when_only_openai_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
         config = route("content_writer", "draft")
         assert config.provider is ModelProvider.OPENAI
         assert config.model == "gpt-4o-mini"
 
     def test_prefers_anthropic_when_both_keys_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        tenancy_credentials.set_credential(_USER, "ANTHROPIC_API_KEY", "sk-ant-test")
+        tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
         config = route("content_writer", "draft")
         assert config.provider is ModelProvider.ANTHROPIC
 
     def test_llm_provider_env_var_wins_over_auto_detection(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        tenancy_credentials.set_credential(_USER, "ANTHROPIC_API_KEY", "sk-ant-test")
         monkeypatch.setenv("LLM_PROVIDER", "openai")
         config = route("content_writer", "draft")
         assert config.provider is ModelProvider.OPENAI
@@ -156,18 +169,18 @@ class TestProviderSelection:
             route("content_writer", "draft")
 
     def test_openai_cheap_tier_also_defaults_to_the_low_cost_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
         assert route("content_strategist", "plan").model == "gpt-4o-mini"
 
     def test_openai_model_identifiers_come_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("OPENAI_MODEL_PRIMARY", "test-openai-primary")
         monkeypatch.setenv("OPENAI_MODEL_CHEAP", "test-openai-cheap")
         assert route("content_writer", "draft").model == "test-openai-primary"
         assert route("content_strategist", "plan").model == "test-openai-cheap"
 
     def test_worker_tier_stays_hermes_regardless_of_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        tenancy_credentials.set_credential(_USER, "OPENAI_API_KEY", "sk-test")
         config = route("engagement", "triage")
         assert config.provider is ModelProvider.HERMES
 
@@ -231,6 +244,25 @@ class TestCostTracker:
         cost_tracker.record_cost(0.5)
         cost_tracker.record_cost(0.25)
         assert cost_tracker.get_today_spend() == pytest.approx(0.75)
+
+    def test_spend_is_isolated_per_user(self) -> None:
+        # reset_for_testing() wipes every user's key (it's a wildcard scan
+        # used for cross-test hygiene) — deliberately not called mid-test
+        # here, only via the outer autouse fixture's teardown, so it can't
+        # mask a real isolation leak between the two users below.
+        cost_tracker.record_cost(3.0)
+        assert cost_tracker.get_today_spend() == pytest.approx(3.0)
+
+        other_user = "user-llmops-test-other"
+        token = tenancy_context.set_current_user_id(other_user)
+        try:
+            assert cost_tracker.get_today_spend() == 0.0
+            cost_tracker.record_cost(7.0)
+            assert cost_tracker.get_today_spend() == pytest.approx(7.0)
+        finally:
+            tenancy_context.reset_current_user_id(token)
+
+        assert cost_tracker.get_today_spend() == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------

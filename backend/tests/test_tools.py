@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from app.tenancy import context as tenancy_context
 from app.tools import registry as registry_module
 from app.tools.registry import registry
 from app.tools.search_x_posts import (
@@ -16,6 +17,16 @@ from app.tools.search_x_posts import (
 from pydantic import BaseModel, ValidationError
 
 registry_module._import_all_tools()
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    # publish_post/schedule_post/delete_post all resolve rate limits and
+    # stamp ownership via the current-user tenancy context (see
+    # plans/peaceful-scribbling-tiger.md Stage 3).
+    token = tenancy_context.set_current_user_id("tools-test-user")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 ALL_TOOL_NAMES = {
     "search_knowledge_base",

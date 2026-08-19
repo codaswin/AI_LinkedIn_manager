@@ -1,12 +1,61 @@
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from app.database import Base, configure_engine
 from app.learning import scheduler
 from app.models.approval_request import ApprovalRequestRecord  # noqa: F401
+from app.models.auth import DashboardUserRecord
 from app.models.feedback import FeedbackRecord  # noqa: F401
 from app.models.learning_proposal import LearningProposalRecord  # noqa: F401
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+
+async def _mark_connected(db_session, user_id: str, platform_ids: set[str]) -> None:
+    """Insert placeholder PlatformCredentialRecord rows so
+
+    platform_credentials.list_platform_status reports these platforms as
+    connected for user_id — engagement_job's pre-check (see
+    app.learning.scheduler._is_connected) needs this to actually run a
+    user through rather than skipping them. The encrypted_value content is
+    never decrypted by list_platform_status, so a placeholder is enough.
+    """
+    from app.memory.platform_credentials import PLATFORM_SCHEMA, _record_id
+    from app.models.platform_credential import PlatformCredentialRecord
+
+    for platform in PLATFORM_SCHEMA:
+        if platform.id not in platform_ids:
+            continue
+        for field in platform.fields:
+            db_session.add(
+                PlatformCredentialRecord(
+                    id=_record_id(user_id, platform.id, field.name),
+                    user_id=user_id,
+                    platform_id=platform.id,
+                    field_name=field.name,
+                    encrypted_value="placeholder",
+                    masked_preview="••••test",
+                )
+            )
+    await db_session.commit()
+
+
+async def _add_active_user(db_session, username: str = "scheduler-test-user") -> str:
+    """Every fan-out job (see plans/peaceful-scribbling-tiger.md Stage 3)
+
+    iterates active dashboard users first — a job body under test that's
+    supposed to actually run needs at least one real row here, or the loop
+    has nothing to iterate and silently does nothing.
+    """
+    user_id = str(uuid.uuid4())
+    db_session.add(
+        DashboardUserRecord(
+            id=user_id, username=username, password_hash="unused-in-these-tests", role="admin", active=True
+        )
+    )
+    await db_session.commit()
+    return user_id
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +124,10 @@ async def test_run_reflection_job_runs_against_a_real_db_session_and_handles_ins
         database_module, "get_session_factory", lambda: async_sessionmaker(bind=engine, expire_on_commit=False)
     )
 
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    async with factory() as seed_db:
+        await _add_active_user(seed_db)
+
     await scheduler._run_reflection_job()  # must not raise
 
     await engine.dispose()
@@ -84,7 +137,8 @@ async def test_run_reflection_job_logs_and_swallows_exceptions(monkeypatch: pyte
     """A scheduled background job must never crash the scheduler itself —
 
     confirmed by making run_reflection raise and checking _run_reflection_job
-    still returns normally.
+    still returns normally (and moves on to any other active user, though
+    only one exists here).
     """
 
     async def failing_run_reflection(db, llm_client, days=7):
@@ -105,9 +159,41 @@ async def test_run_reflection_job_logs_and_swallows_exceptions(monkeypatch: pyte
         database_module, "get_session_factory", lambda: async_sessionmaker(bind=engine, expire_on_commit=False)
     )
 
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    async with factory() as seed_db:
+        await _add_active_user(seed_db)
+
     await scheduler._run_reflection_job()  # must not raise despite the failure above
 
     await engine.dispose()
+
+
+async def test_scheduled_posts_job_fans_out_per_user_and_isolates_failures(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for the multi-tenant Stage 3 fan-out (see
+
+    plans/peaceful-scribbling-tiger.md): every active user gets their own
+    call, and one user's exception must never stop another user's from
+    running.
+    """
+    import app.automation as automation_module
+
+    failing_user = await _add_active_user(db_session, "scheduler-failing-user")
+    ok_user = await _add_active_user(db_session, "scheduler-ok-user")
+    calls: list[str] = []
+
+    async def fake_process_due_posts(user_id):
+        calls.append(user_id)
+        if user_id == failing_user:
+            raise RuntimeError("boom")
+        return {"claimed": 1, "published": 1, "failed": 0}
+
+    monkeypatch.setattr(automation_module, "process_due_posts", fake_process_due_posts)
+
+    await scheduler._run_scheduled_posts_job()  # must not raise despite failing_user's exception
+
+    assert set(calls) == {failing_user, ok_user}
 
 
 async def test_retention_job_runs_policy_with_scoped_session(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,25 +214,34 @@ async def test_retention_job_runs_policy_with_scoped_session(db_session, monkeyp
     assert calls == 1
 
 
-async def test_scheduled_posts_job_runs_due_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_scheduled_posts_job_runs_due_queue(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
     import app.automation as automation_module
 
-    calls = 0
+    user_id = await _add_active_user(db_session)
+    calls: list[str] = []
 
-    async def fake_process_due_posts():
-        nonlocal calls
-        calls += 1
+    async def fake_process_due_posts(user_id):
+        calls.append(user_id)
         return {"claimed": 1, "published": 1, "failed": 0}
 
     monkeypatch.setattr(automation_module, "process_due_posts", fake_process_due_posts)
 
     await scheduler._run_scheduled_posts_job()
 
-    assert calls == 1
+    assert calls == [user_id]
 
 
 async def test_research_job_honors_persisted_cadence(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
     import app.agents.research_pipeline as pipeline_module
+    from app.memory.settings import RESEARCH_AUTOMATION_QUERIES_KEY, set_setting
+    from app.tenancy import context as tenancy_context
+
+    user_id = await _add_active_user(db_session)
+    token = tenancy_context.set_current_user_id(user_id)
+    try:
+        await set_setting(db_session, RESEARCH_AUTOMATION_QUERIES_KEY, "first topic,second topic", updated_by="test")
+    finally:
+        tenancy_context.reset_current_user_id(token)
 
     queries: list[str] = []
 
@@ -155,7 +250,6 @@ async def test_research_job_honors_persisted_cadence(db_session, monkeypatch: py
         queries.append(query)
 
     monkeypatch.setattr(pipeline_module, "conduct_research", fake_conduct_research)
-    monkeypatch.setenv("RESEARCH_AUTOMATION_QUERIES", "first topic,second topic")
 
     await scheduler._run_research_job()
     await scheduler._run_research_job()
@@ -163,10 +257,28 @@ async def test_research_job_honors_persisted_cadence(db_session, monkeypatch: py
     assert queries == ["first topic", "second topic"]
 
 
+async def test_research_job_skips_a_user_with_no_automation_queries_configured(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.agents.research_pipeline as pipeline_module
+
+    await _add_active_user(db_session)  # no research_agent.automation_queries set for them
+
+    async def unexpected_conduct_research(query, llm_client, persist):
+        raise AssertionError("must not run research for a user who hasn't configured any queries")
+
+    monkeypatch.setattr(pipeline_module, "conduct_research", unexpected_conduct_research)
+
+    await scheduler._run_research_job()  # must not raise
+
+
 async def test_engagement_job_deduplicates_notifications(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
     import app.agents.engagement as engagement_module
     import app.tools.registry as registry_module
     from app.models.automation import ProcessedNotificationRecord
+
+    user_id = await _add_active_user(db_session)
+    await _mark_connected(db_session, user_id, {"composio", "linkedin"})
 
     handled: list[str] = []
 
@@ -196,6 +308,22 @@ async def test_engagement_job_deduplicates_notifications(db_session, monkeypatch
     assert handled == ["notification-1"]
     assert record is not None
     assert record.outcome == "submitted_for_approval"
+    assert record.user_id == user_id
+
+
+async def test_engagement_job_skips_a_user_without_a_linkedin_connection(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.tools.registry as registry_module
+
+    await _add_active_user(db_session)  # composio/linkedin left unconfigured
+
+    async def unexpected_execute_tool(tool_name, arguments, approved):
+        raise AssertionError("must not poll LinkedIn for a user with no connection configured")
+
+    monkeypatch.setattr(registry_module, "execute_tool", unexpected_execute_tool)
+
+    await scheduler._run_engagement_job()  # must not raise
 
 
 async def test_distributed_scheduler_skips_jobs_owned_by_another_worker(shared_redis) -> None:

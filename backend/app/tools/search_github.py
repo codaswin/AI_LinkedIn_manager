@@ -9,12 +9,12 @@ needed for that goal.
 
 from __future__ import annotations
 
-import os
 import typing as t
 from datetime import datetime
 
 import httpx
 from app.agents.research_schema import ResearchResult
+from app.tenancy.credentials import resolve_credential
 from app.tools.http_utils import request_with_retry
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field
@@ -30,7 +30,7 @@ class SearchGitHubArgs(BaseModel):
 
 def _headers() -> dict[str, str]:
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "ai-linkedin-manager-research-agent"}
-    token = os.environ.get("GITHUB_TOKEN")
+    token = resolve_credential("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers

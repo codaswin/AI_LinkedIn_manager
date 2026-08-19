@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.database import Base
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -24,6 +24,9 @@ class LearningProposalRecord(Base):
     __tablename__ = "learning_proposals"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    # Stamped by learning/proposal_review.py's submit_proposal on every
+    # insert (Stage 3, plans/peaceful-scribbling-tiger.md).
+    user_id: Mapped[str] = mapped_column(ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False, index=True)
     pattern: Mapped[str] = mapped_column(String, nullable=False)
     change_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     proposed_change: Mapped[str] = mapped_column(String, nullable=False)

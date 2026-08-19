@@ -82,8 +82,19 @@ def _isolate_llm_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
     secrets_module.reset_for_testing()
 
 
+# Set by the `client` fixture below to the freshly created "test-admin" dashboard
+# user's real id, for the handful of tests that need to seed a row directly
+# through the DB (bypassing HTTP, e.g. _seed_approval) with the SAME user_id the
+# session-guard middleware will resolve for every request `client` makes — every
+# tenant-scoped table's rows are now owned by a specific user_id (Stage 1/2,
+# plans/peaceful-scribbling-tiger.md), so a seeded row with the wrong (or no)
+# owner is invisible to/rejected by the very requests meant to exercise it.
+_CURRENT_TEST_ADMIN_ID: str | None = None
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
+    global _CURRENT_TEST_ADMIN_ID
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     configure_engine(engine)
     async with engine.begin() as conn:
@@ -91,7 +102,8 @@ async def client() -> AsyncIterator[AsyncClient]:
 
     factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     async with factory() as session:
-        await create_user(session, "test-admin", "test-password-strong", role="admin")
+        admin = await create_user(session, "test-admin", "test-password-strong", role="admin")
+        _CURRENT_TEST_ADMIN_ID = admin.id
         _, session_token, csrf_token = await authenticate_credentials(
             session, "test-admin", "test-password-strong", "test-client"
         )
@@ -112,6 +124,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     finally:
         app.dependency_overrides.pop(get_db, None)
         await engine.dispose()
+        _CURRENT_TEST_ADMIN_ID = None
 
 
 async def test_health(client: AsyncClient) -> None:
@@ -163,6 +176,7 @@ async def _seed_approval(client: AsyncClient) -> dict[str, Any]:
     async for db in override():
         record = ApprovalRequestRecord(
             id="appr-1",
+            user_id=_CURRENT_TEST_ADMIN_ID,
             tool_name="publish_post",
             arguments={"content": "hello world"},
             requested_by_agent="content_writer",
@@ -249,6 +263,7 @@ async def _seed_proposal(client: AsyncClient, change_type: str = "system_prompt"
     async for db in override():
         record = LearningProposalRecord(
             id="prop-1",
+            user_id=_CURRENT_TEST_ADMIN_ID,
             pattern="drafts sound salesy",
             change_type=change_type,
             proposed_change="add tone guidance",
@@ -325,16 +340,28 @@ async def test_activity_idle_by_default(client: AsyncClient) -> None:
 
 async def test_activity_reports_current_state(client: AsyncClient) -> None:
     from app.activity import reset_for_testing, set_activity
+    from app.tenancy import context as tenancy_context
 
-    reset_for_testing()
-    set_activity("research", "researching", detail="Searching Reddit", source="reddit")
+    # set_activity() is per-user (Stage 2) — set the tenancy context to the
+    # same "test-admin" id the /activity request below will resolve via the
+    # session-guard middleware, since this call happens outside any request.
+    token = tenancy_context.set_current_user_id(_CURRENT_TEST_ADMIN_ID)
+    try:
+        reset_for_testing()
+        set_activity("research", "researching", detail="Searching Reddit", source="reddit")
+    finally:
+        tenancy_context.reset_current_user_id(token)
     try:
         response = await client.get("/activity")
         body = response.json()
         assert body["agent"] == "research"
         assert body["source"] == "reddit"
     finally:
-        reset_for_testing()
+        token = tenancy_context.set_current_user_id(_CURRENT_TEST_ADMIN_ID)
+        try:
+            reset_for_testing()
+        finally:
+            tenancy_context.reset_current_user_id(token)
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +605,12 @@ async def test_login_sets_secure_httponly_strict_cookie(client: AsyncClient, mon
     assert "SameSite=strict" in cookie
 
 
-async def test_viewer_role_cannot_mutate_or_read_credentials(client: AsyncClient) -> None:
+async def test_viewer_role_can_read_but_not_mutate_their_own_workspace(client: AsyncClient) -> None:
+    # "viewer" no longer has a special /credentials-wide block — credentials
+    # (like everything else, post-multi-tenant-conversion) are scoped to the
+    # caller's own user_id, not a single shared admin-only resource. A viewer
+    # can read everything in their own workspace, but the generic
+    # GET-only-for-viewer rule in authorize_request still blocks mutations.
     override = app.dependency_overrides[get_db]
     async for db in override():
         await create_user(db, "test-viewer", "viewer-password-strong", role="viewer")
@@ -590,10 +622,20 @@ async def test_viewer_role_cannot_mutate_or_read_credentials(client: AsyncClient
         headers={CSRF_HEADER_NAME: csrf},
     ) as viewer:
         assert (await viewer.get("/approvals")).status_code == 200
-        assert (await viewer.get("/credentials")).status_code == 403
+        assert (await viewer.get("/credentials")).status_code == 200
+        response = await viewer.put("/credentials/openai", json={"values": {"api_key": "sk-abcd1234"}})
+        assert response.status_code == 403
+        assert response.json()["detail"] == "operator role required"
         response = await viewer.put("/settings/research_agent.poll_interval", json={"value": "hourly"})
         assert response.status_code == 403
         assert response.json()["detail"] == "operator role required"
+        # And admin-only endpoints stay admin-only regardless of the
+        # /credentials change above.
+        assert (await viewer.get("/admin/users")).status_code == 403
+        response = await viewer.post(
+            "/admin/users", json={"username": "sneaky", "password": "sneaky-password-strong"}
+        )
+        assert response.status_code == 403
 
 
 async def test_login_is_rate_limited_in_shared_state(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -603,6 +645,63 @@ async def test_login_is_rate_limited_in_shared_state(client: AsyncClient, monkey
         assert response.status_code == 401
     response = await client.post("/auth/login", json={"username": "test-admin", "password": "test-password-strong"})
     assert response.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# Admin — inviting new dashboard users
+# ---------------------------------------------------------------------------
+
+
+async def test_create_user_happy_path_defaults_to_operator_role(client: AsyncClient) -> None:
+    response = await client.post(
+        "/admin/users", json={"username": "new-teammate", "password": "a-strong-password-123"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["username"] == "new-teammate"
+    assert body["role"] == "operator"
+    assert body["active"] is True
+    assert "password" not in body
+    assert "password_hash" not in body
+
+
+async def test_create_user_can_set_explicit_role(client: AsyncClient) -> None:
+    response = await client.post(
+        "/admin/users", json={"username": "new-admin", "password": "a-strong-password-123", "role": "admin"}
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "admin"
+
+
+async def test_create_user_rejects_duplicate_username(client: AsyncClient) -> None:
+    response = await client.post(
+        "/admin/users", json={"username": "test-admin", "password": "a-strong-password-123"}
+    )
+    assert response.status_code == 422
+
+
+async def test_create_user_rejects_short_password(client: AsyncClient) -> None:
+    response = await client.post("/admin/users", json={"username": "new-teammate", "password": "too-short"})
+    assert response.status_code == 422
+
+
+async def test_list_users_returns_every_dashboard_user_without_password_hashes(client: AsyncClient) -> None:
+    await client.post("/admin/users", json={"username": "new-teammate", "password": "a-strong-password-123"})
+    response = await client.get("/admin/users")
+    assert response.status_code == 200
+    body = response.json()
+    usernames = {u["username"] for u in body}
+    assert {"test-admin", "new-teammate"} <= usernames
+    assert all("password" not in u and "password_hash" not in u for u in body)
+
+
+async def test_admin_users_endpoints_require_authentication() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as anonymous:
+        assert (await anonymous.get("/admin/users")).status_code == 401
+        response = await anonymous.post(
+            "/admin/users", json={"username": "x", "password": "a-strong-password-123"}
+        )
+        assert response.status_code == 401
 
 
 async def test_bootstrap_password_rotation_revokes_existing_sessions(

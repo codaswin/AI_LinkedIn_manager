@@ -4,6 +4,8 @@ import type {
   ApprovalRequest,
   BrandVoice,
   CostSummary,
+  DashboardRole,
+  DashboardUser,
   LearningProposal,
   PlatformCredentialStatus,
   ReflectionResult,
@@ -191,3 +193,13 @@ export const saveCredentials = (platformId: string, values: Record<string, strin
 
 export const deleteCredentials = (platformId: string): Promise<{ deleted: boolean }> =>
   request(`/credentials/${encodeURIComponent(platformId)}`, { method: "DELETE" });
+
+// -- Admin: dashboard users (invite-only account creation) ------------------
+
+export const listUsers = (): Promise<DashboardUser[]> => request("/admin/users");
+
+export const createUser = (username: string, password: string, role: DashboardRole): Promise<DashboardUser> =>
+  request("/admin/users", {
+    method: "POST",
+    body: JSON.stringify({ username, password, role }),
+  });

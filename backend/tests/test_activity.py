@@ -5,13 +5,18 @@ import asyncio
 import pytest
 from app import activity as activity_module
 from app.activity import activity, clear_activity, get_activity, set_activity
+from app.tenancy import context as tenancy_context
+
+_USER = "user-activity-test"
 
 
 @pytest.fixture(autouse=True)
 def _reset() -> None:
+    token = tenancy_context.set_current_user_id(_USER)
     activity_module.reset_for_testing()
     yield
     activity_module.reset_for_testing()
+    tenancy_context.reset_current_user_id(token)
 
 
 def test_idle_by_default() -> None:
@@ -90,6 +95,26 @@ async def test_concurrent_activities_dont_stomp_each_other() -> None:
 
     await asyncio.gather(short_task(), long_task(), assert_never_idle_during(0.25))
     assert get_activity() is None
+
+
+def test_activity_boards_are_isolated_per_user() -> None:
+    set_activity("research", "researching for user A", source="user-a")
+
+    other_user = "user-activity-test-other"
+    token = tenancy_context.set_current_user_id(other_user)
+    try:
+        assert get_activity() is None
+        set_activity("research", "researching for user B", source="user-b")
+        result = get_activity()
+        assert result is not None
+        assert result["source"] == "user-b"
+        activity_module.clear_activity()  # clean up the other user's board directly
+    finally:
+        tenancy_context.reset_current_user_id(token)
+
+    result = get_activity()
+    assert result is not None
+    assert result["source"] == "user-a"
 
 
 async def test_get_activity_reports_most_recently_started_when_concurrent() -> None:

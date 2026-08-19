@@ -51,14 +51,18 @@ from app.safety.api_auth import (
     authenticate_request,
     authorize_request,
     clear_session_cookie,
+    create_user,
     current_user,
     ensure_bootstrap_admin,
     is_public_path,
+    list_dashboard_users,
+    require_role,
     revoke_session,
     rotate_csrf_token,
     set_session_cookie,
 )
 from app.safety.secrets import CredentialEncryptionError
+from app.tenancy.context import reset_current_user_id, set_current_user_id
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
@@ -91,7 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # consumer (anthropic_client, search_reddit, ...) still just reads
     # os.environ, so a restart needs this to not lose what was configured.
     async with get_session_factory()() as session:
-        await platform_credentials.load_saved_credentials_into_env(session)
+        await platform_credentials.load_all_saved_credentials(session)
         await ensure_bootstrap_admin(session)
     start_scheduler()
     logger.info("app_startup_complete")
@@ -119,7 +123,15 @@ async def _dashboard_session_guard(request: Request, call_next):
         authorize_request(request, user)
     except HTTPException as exc:
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-    return await call_next(request)
+    # Every credential lookup, cached SDK client, and scoped query downstream
+    # of this point asks "who's the current user" via this context var
+    # instead of a parameter threaded through every function — see
+    # app.tenancy.context.
+    token = set_current_user_id(user.id)
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_user_id(token)
 
 
 # The dashboard frontend (frontend/, a separate Vite dev server / static
@@ -200,14 +212,14 @@ async def login(body: LoginBody, request: Request, response: Response) -> dict[s
             request.client.host if request.client else None,
         )
     set_session_cookie(response, session_token)
-    return {"user": {"username": user.username, "role": user.role}, "csrf_token": csrf_token}
+    return {"user": {"id": user.id, "username": user.username, "role": user.role}, "csrf_token": csrf_token}
 
 
 @app.get("/auth/me")
 async def auth_me(request: Request) -> dict[str, Any]:
     user = current_user(request)
     csrf_token = await rotate_csrf_token(request)
-    return {"user": {"username": user.username, "role": user.role}, "csrf_token": csrf_token}
+    return {"user": {"id": user.id, "username": user.username, "role": user.role}, "csrf_token": csrf_token}
 
 
 @app.post("/auth/logout")
@@ -217,6 +229,54 @@ async def logout(request: Request, response: Response) -> dict[str, bool]:
     return {"logged_out": True}
 
 
+# ---------------------------------------------------------------------------
+# Admin — inviting new dashboard users. This app is invite-only: there is no
+# public signup route, only an admin-gated one. Every dashboard user gets
+# their own fully isolated workspace (credentials, approvals, activity,
+# brand voice, RAG, scheduled automation — see plans/peaceful-scribbling-tiger.md),
+# so "admin" no longer means "can manage the shared app's credentials" (there
+# is no more shared credential set) — it means exactly one thing: can invite
+# further users. A regular invited user defaults to "operator", which is
+# already enough role to fully read/write everything in their OWN workspace
+# (see authorize_request in api_auth.py) without also being able to invite
+# others.
+# ---------------------------------------------------------------------------
+
+
+def _dashboard_user_dict(user: Any) -> dict[str, Any]:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "active": user.active,
+        "created_at": user.created_at,
+        "last_login_at": user.last_login_at,
+    }
+
+
+@app.get("/admin/users")
+async def list_users(request: Request, db: AsyncSession = Depends(get_db)) -> list[dict[str, Any]]:
+    require_role(request, minimum="admin")
+    users = await list_dashboard_users(db)
+    return [_dashboard_user_dict(u) for u in users]
+
+
+class CreateUserBody(BaseModel):
+    username: str
+    password: str
+    role: Literal["viewer", "operator", "admin"] = "operator"
+
+
+@app.post("/admin/users")
+async def create_dashboard_user(
+    body: CreateUserBody, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    require_role(request, minimum="admin")
+    try:
+        user = await create_user(db, body.username, body.password, role=body.role)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _dashboard_user_dict(user)
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +396,8 @@ async def delete_brand_voice(brand_voice_id: str, db: AsyncSession = Depends(get
 
 
 @app.get("/credentials")
-async def list_credentials(db: AsyncSession = Depends(get_db)) -> list[dict[str, Any]]:
-    return await platform_credentials.list_platform_status(db)
+async def list_credentials(request: Request, db: AsyncSession = Depends(get_db)) -> list[dict[str, Any]]:
+    return await platform_credentials.list_platform_status(db, current_user(request).id)
 
 
 class CredentialSaveBody(BaseModel):
@@ -346,20 +406,21 @@ class CredentialSaveBody(BaseModel):
 
 @app.put("/credentials/{platform_id}")
 async def save_credentials(
-    platform_id: str, body: CredentialSaveBody, db: AsyncSession = Depends(get_db)
+    platform_id: str, body: CredentialSaveBody, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
+    user_id = current_user(request).id
     try:
-        await platform_credentials.save_platform_credentials(db, platform_id, body.values)
+        await platform_credentials.save_platform_credentials(db, user_id, platform_id, body.values)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    statuses = await platform_credentials.list_platform_status(db)
+    statuses = await platform_credentials.list_platform_status(db, user_id)
     return next(s for s in statuses if s["id"] == platform_id)
 
 
 @app.delete("/credentials/{platform_id}")
-async def clear_credentials(platform_id: str, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+async def clear_credentials(platform_id: str, request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
     try:
-        deleted = await platform_credentials.delete_platform_credentials(db, platform_id)
+        deleted = await platform_credentials.delete_platform_credentials(db, current_user(request).id, platform_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"deleted": deleted}

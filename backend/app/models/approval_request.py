@@ -26,6 +26,7 @@ class ApprovalRequestRecord(Base):
     __tablename__ = "approval_requests"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False, index=True)
     tool_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     arguments: Mapped[dict] = mapped_column(JSON, nullable=False)
     requested_by_agent: Mapped[str] = mapped_column(String, nullable=False)

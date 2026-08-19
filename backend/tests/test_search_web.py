@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
 from app.tools import search_web, web_search_provider
 from app.tools.search_web import SearchWebArgs, execute
 from app.tools.web_search_provider import (
@@ -10,6 +12,17 @@ from app.tools.web_search_provider import (
     WebSearchProvider,
     get_default_provider,
 )
+
+_USER = "search-web-test-user"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
 
 
 class _FakeProvider(WebSearchProvider):
@@ -72,7 +85,7 @@ async def test_missing_brave_api_key_falls_back_to_null_provider_gracefully(monk
 
 async def test_brave_provider_selected_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEB_SEARCH_PROVIDER", "brave")
-    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "key123")
+    tenancy_credentials.set_credential(_USER, "BRAVE_SEARCH_API_KEY", "key123")
     provider = get_default_provider()
     assert isinstance(provider, BraveWebSearchProvider)
 

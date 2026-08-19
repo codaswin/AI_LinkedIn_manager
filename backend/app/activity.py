@@ -10,13 +10,21 @@ from contextlib import contextmanager
 from typing import Any
 
 from app.shared_state import get_client
+from app.tenancy.context import get_current_user_id
 
-_HASH_KEY = "runtime:activity:entries"
-_ORDER_KEY = "runtime:activity:order"
 _TTL_SECONDS = 3600
 
 
+def _hash_key(user_id: str) -> str:
+    return f"runtime:activity:entries:{user_id}"
+
+
+def _order_key(user_id: str) -> str:
+    return f"runtime:activity:order:{user_id}"
+
+
 def set_activity(agent: str, action: str, detail: str = "", source: str | None = None) -> str:
+    user_id = get_current_user_id()
     token = str(uuid.uuid4())
     started_at = time.time()
     payload = json.dumps(
@@ -30,36 +38,38 @@ def set_activity(agent: str, action: str, detail: str = "", source: str | None =
     )
     client = get_client()
     with client.pipeline() as pipe:
-        pipe.hset(_HASH_KEY, token, payload)
-        pipe.zadd(_ORDER_KEY, {token: started_at})
-        pipe.expire(_HASH_KEY, _TTL_SECONDS)
-        pipe.expire(_ORDER_KEY, _TTL_SECONDS)
+        pipe.hset(_hash_key(user_id), token, payload)
+        pipe.zadd(_order_key(user_id), {token: started_at})
+        pipe.expire(_hash_key(user_id), _TTL_SECONDS)
+        pipe.expire(_order_key(user_id), _TTL_SECONDS)
         pipe.execute()
     return token
 
 
 def clear_activity(token: str | int | None = None) -> None:
+    user_id = get_current_user_id()
     client = get_client()
     if token is None:
-        client.delete(_HASH_KEY, _ORDER_KEY)
+        client.delete(_hash_key(user_id), _order_key(user_id))
         return
     value = str(token)
     with client.pipeline() as pipe:
-        pipe.hdel(_HASH_KEY, value)
-        pipe.zrem(_ORDER_KEY, value)
+        pipe.hdel(_hash_key(user_id), value)
+        pipe.zrem(_order_key(user_id), value)
         pipe.execute()
 
 
 def get_activity() -> dict[str, Any] | None:
+    user_id = get_current_user_id()
     client = get_client()
     while True:
-        tokens = client.zrevrange(_ORDER_KEY, 0, 0)
+        tokens = client.zrevrange(_order_key(user_id), 0, 0)
         if not tokens:
             return None
         token = tokens[0]
-        raw = client.hget(_HASH_KEY, token)
+        raw = client.hget(_hash_key(user_id), token)
         if raw is None:
-            client.zrem(_ORDER_KEY, token)
+            client.zrem(_order_key(user_id), token)
             continue
         current = json.loads(raw)
         return {

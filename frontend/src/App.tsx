@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
-import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, Command, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, UserRound, Workflow, X } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, Command, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, Users, UserRound, Workflow, X } from "lucide-react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import "./App.css";
 import { ApiError, getCurrentSession, login, logout } from "./api";
@@ -14,18 +14,23 @@ import { CostView } from "./views/CostView";
 import { LandingPage } from "./views/LandingPage";
 import { LearningProposalsView } from "./views/LearningProposalsView";
 import { SettingsView } from "./views/SettingsView";
+import { UsersView } from "./views/UsersView";
 import { WorkflowsView } from "./views/WorkflowsView";
 
 type NavIcon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
 const TABS = [
-  { id: "workflows", label: "Workflows", description: "Run agent tasks", icon: Workflow, group: "Workspace", render: () => <WorkflowsView /> },
-  { id: "approvals", label: "Approval Queue", description: "Review gated actions", icon: ShieldCheck, group: "Workspace", render: () => <ApprovalQueueView /> },
-  { id: "connections", label: "Connections", description: "Manage integrations", icon: Network, group: "Workspace", render: () => <ConnectionsView /> },
-  { id: "brand-voice", label: "Brand Voice", description: "Define writing style", icon: MessageSquareText, group: "Intelligence", render: () => <BrandVoiceView /> },
-  { id: "learning", label: "Self-Learning", description: "Review proposals", icon: BrainCircuit, group: "Intelligence", render: () => <LearningProposalsView /> },
-  { id: "settings", label: "Agent Settings", description: "Configure behavior", icon: Settings2, group: "System", render: () => <SettingsView /> },
-  { id: "cost", label: "Usage & Cost", description: "Track daily spend", icon: CircleDollarSign, group: "System", render: () => <CostView /> },
-] as const satisfies readonly { id: string; label: string; description: string; icon: NavIcon; group: string; render: () => React.ReactNode }[];
+  { id: "workflows", label: "Workflows", description: "Run agent tasks", icon: Workflow, group: "Workspace", adminOnly: false, render: () => <WorkflowsView /> },
+  { id: "approvals", label: "Approval Queue", description: "Review gated actions", icon: ShieldCheck, group: "Workspace", adminOnly: false, render: () => <ApprovalQueueView /> },
+  { id: "connections", label: "Connections", description: "Manage integrations", icon: Network, group: "Workspace", adminOnly: false, render: (session: DashboardSession) => <ConnectionsView currentUserId={session.user.id} /> },
+  { id: "brand-voice", label: "Brand Voice", description: "Define writing style", icon: MessageSquareText, group: "Intelligence", adminOnly: false, render: () => <BrandVoiceView /> },
+  { id: "learning", label: "Self-Learning", description: "Review proposals", icon: BrainCircuit, group: "Intelligence", adminOnly: false, render: () => <LearningProposalsView /> },
+  { id: "settings", label: "Agent Settings", description: "Configure behavior", icon: Settings2, group: "System", adminOnly: false, render: () => <SettingsView /> },
+  { id: "cost", label: "Usage & Cost", description: "Track daily spend", icon: CircleDollarSign, group: "System", adminOnly: false, render: () => <CostView /> },
+  // Invite-only account creation — only admins can see or reach this tab
+  // (also enforced server-side by require_role(minimum="admin") on
+  // GET/POST /admin/users, so hiding the tab is a UX nicety, not the guard).
+  { id: "users", label: "Users", description: "Invite teammates", icon: Users, group: "System", adminOnly: true, render: () => <UsersView /> },
+] as const satisfies readonly { id: string; label: string; description: string; icon: NavIcon; group: string; adminOnly: boolean; render: (session: DashboardSession) => React.ReactNode }[];
 const NAV_GROUPS = ["Workspace", "Intelligence", "System"] as const;
 
 function ThemeToggle() {
@@ -91,7 +96,8 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Dashboard
 function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSignedOut: () => void }) {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("workflows");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const active = TABS.find((tab) => tab.id === activeTab) ?? TABS[0];
+  const visibleTabs = TABS.filter((tab) => !tab.adminOnly || session.user.role === "admin");
+  const active = visibleTabs.find((tab) => tab.id === activeTab) ?? visibleTabs[0];
   const ActiveIcon = active.icon;
 
   useEffect(() => {
@@ -122,7 +128,7 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
         <nav className="sidebar-nav" aria-label="Primary navigation">
           {NAV_GROUPS.map((group) => <div className="sidebar-group" key={group}>
             <span className="sidebar-group-label">{group}</span>
-            {TABS.filter((tab) => tab.group === group).map((tab) => {
+            {visibleTabs.filter((tab) => tab.group === group).map((tab) => {
               const Icon = tab.icon;
               const isActive = tab.id === activeTab;
               return <button key={tab.id} type="button" className={isActive ? "sidebar-item sidebar-item-active" : "sidebar-item"} onClick={() => selectTab(tab.id)} aria-current={isActive ? "page" : undefined}>
@@ -166,7 +172,7 @@ function Dashboard({ session, onSignedOut }: { session: DashboardSession; onSign
             exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
           >
-            {active.render()}
+            {active.render(session)}
           </motion.div>
         </AnimatePresence>
       </main>

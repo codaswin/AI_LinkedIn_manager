@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.database import Base
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -12,7 +12,7 @@ def _utcnow() -> datetime:
 
 
 class PlatformCredentialRecord(Base):
-    """One saved credential FIELD for one platform.
+    """One saved credential FIELD for one platform, owned by one dashboard user.
 
     A single-field platform (OpenAI's API key) is one row; a multi-field
     platform (Reddit's client ID + client secret + user agent) is three rows
@@ -24,7 +24,8 @@ class PlatformCredentialRecord(Base):
 
     __tablename__ = "platform_credentials"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)  # f"{platform_id}:{field_name}"
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # f"{user_id}:{platform_id}:{field_name}"
+    user_id: Mapped[str] = mapped_column(ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False, index=True)
     platform_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     field_name: Mapped[str] = mapped_column(String, nullable=False)
     encrypted_value: Mapped[str] = mapped_column(String, nullable=False)

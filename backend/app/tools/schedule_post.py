@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from app.database import get_session_factory
 from app.models.automation import ScheduledPostRecord
+from app.tenancy.context import get_current_user_id
 from app.tools.execution_context import current_idempotency_key
 from app.tools.registry import ToolDefinition, registry
 from pydantic import BaseModel, Field, field_validator
@@ -50,6 +51,7 @@ async def execute(args: SchedulePostArgs) -> dict[str, t.Any]:
 
         record = ScheduledPostRecord(
             id=str(uuid.uuid4()),
+            user_id=get_current_user_id(),
             content=args.content,
             publish_at=args.publish_at,
             status="pending",

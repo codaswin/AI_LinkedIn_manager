@@ -24,6 +24,7 @@ from typing import Literal
 
 import structlog
 from app.models.learning_proposal import LearningProposalRecord
+from app.tenancy.context import get_current_user_id
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,6 +104,7 @@ async def submit_proposal(
 
     record = LearningProposalRecord(
         id=str(uuid.uuid4()),
+        user_id=get_current_user_id(),
         pattern=pattern,
         change_type=change_type,
         proposed_change=proposed_change,
@@ -129,7 +131,10 @@ async def submit_proposal(
 
 async def _get_pending_or_raise(db: AsyncSession, proposal_id: str) -> LearningProposalRecord:
     record = await db.get(LearningProposalRecord, proposal_id)
-    if record is None:
+    # A mismatched owner reads identically to "doesn't exist" — never confirms
+    # to a caller that some other user's proposal exists at all (matches
+    # safety.approval_gate._locked_record's pattern).
+    if record is None or record.user_id != get_current_user_id():
         raise ProposalNotFoundError(f"No learning proposal with id {proposal_id!r}")
     if record.status != "pending":
         raise ProposalAlreadyDecidedError(
@@ -173,5 +178,10 @@ async def reject_proposal(
 
 
 async def list_pending(db: AsyncSession) -> list[LearningProposal]:
-    result = await db.execute(select(LearningProposalRecord).where(LearningProposalRecord.status == "pending"))
+    result = await db.execute(
+        select(LearningProposalRecord).where(
+            LearningProposalRecord.status == "pending",
+            LearningProposalRecord.user_id == get_current_user_id(),
+        )
+    )
     return [LearningProposal.model_validate(r) for r in result.scalars().all()]

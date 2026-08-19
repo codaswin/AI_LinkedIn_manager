@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from app.tenancy import context as tenancy_context
+from app.tenancy import credentials as tenancy_credentials
 from app.tools import search_producthunt
 from app.tools.registry import execute_tool
 from app.tools.search_producthunt import (
@@ -8,6 +10,8 @@ from app.tools.search_producthunt import (
     SearchProductHuntArgs,
     execute,
 )
+
+_USER = "search-producthunt-test-user"
 
 NODE_MATCH = {
     "id": "1",
@@ -41,8 +45,20 @@ class _FakeResponse:
 
 
 @pytest.fixture(autouse=True)
-def _ph_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PRODUCTHUNT_TOKEN", "tok")
+def _tenancy_context() -> None:
+    tenancy_credentials.clear_user(_USER)
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
+    tenancy_credentials.clear_user(_USER)
+
+
+@pytest.fixture(autouse=True)
+def _ph_env(_tenancy_context: None) -> None:
+    # Explicitly depends on _tenancy_context so it always runs after that
+    # fixture's setup (which clears the overlay) — autouse fixtures with no
+    # declared dependency aren't guaranteed to run in file order.
+    tenancy_credentials.set_credential(_USER, "PRODUCTHUNT_TOKEN", "tok")
 
 
 async def test_filters_by_query_and_returns_normalized_results(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,14 +77,14 @@ async def test_filters_by_query_and_returns_normalized_results(monkeypatch: pyte
     assert item["metadata"]["topics"] == ["Artificial Intelligence"]
 
 
-async def test_missing_token_raises_config_error_directly(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PRODUCTHUNT_TOKEN", raising=False)
+async def test_missing_token_raises_config_error_directly() -> None:
+    tenancy_credentials.clear_credential(_USER, "PRODUCTHUNT_TOKEN")
     with pytest.raises(ProductHuntConfigError, match="PRODUCTHUNT_TOKEN"):
         await execute(SearchProductHuntArgs(query="agentic AI"))
 
 
-async def test_missing_token_is_isolated_by_sandbox_as_error_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PRODUCTHUNT_TOKEN", raising=False)
+async def test_missing_token_is_isolated_by_sandbox_as_error_status() -> None:
+    tenancy_credentials.clear_credential(_USER, "PRODUCTHUNT_TOKEN")
 
     from app.tools import registry as registry_module
 

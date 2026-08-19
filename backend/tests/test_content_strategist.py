@@ -10,6 +10,14 @@ from app.agents import content_strategist
 from app.agents.content_strategist import PostBrief, build_post_brief, build_run_config
 from app.harness.loop import AgentRunConfig, AgentState, ToolCallRequest
 from app.llmops.prompt_registry import get_prompt, register_prompt
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-content-strategist-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @pytest.fixture(autouse=True)

@@ -8,7 +8,7 @@ export type ApprovalStatus = "pending" | "executing" | "succeeded" | "failed" | 
 export type DashboardRole = "viewer" | "operator" | "admin";
 
 export interface DashboardSession {
-  user: { username: string; role: DashboardRole };
+  user: { id: string; username: string; role: DashboardRole };
   csrf_token: string;
 }
 
@@ -148,4 +148,17 @@ export interface ToolExecutionResult {
   result?: Record<string, unknown> | null;
   error?: string | null;
   latency_seconds?: number;
+}
+
+// -- Admin: dashboard users ------------------------------------------------
+// Invite-only account creation — GET/POST /admin/users, admin role required.
+// Never carries a password or password hash.
+
+export interface DashboardUser {
+  id: string;
+  username: string;
+  role: DashboardRole;
+  active: boolean;
+  created_at: string;
+  last_login_at: string | null;
 }

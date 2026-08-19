@@ -8,6 +8,14 @@ import pytest
 from app.agents import content_writer
 from app.harness.loop import ToolCallRequest
 from app.llmops.prompt_registry import get_prompt
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-content-writer-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @dataclass

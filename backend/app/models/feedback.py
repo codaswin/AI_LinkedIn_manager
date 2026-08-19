@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.database import Base
-from sqlalchemy import JSON, DateTime, Float, String
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -27,6 +27,9 @@ class FeedbackRecord(Base):
     __tablename__ = "feedback"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    # Stamped by learning/feedback.py's capture_feedback on every insert
+    # (Stage 3, plans/peaceful-scribbling-tiger.md).
+    user_id: Mapped[str] = mapped_column(ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False, index=True)
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     agent_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     signal_type: Mapped[str] = mapped_column(String, nullable=False, index=True)

@@ -14,6 +14,7 @@ import faiss
 import numpy as np
 from app.config import settings
 from app.rag.chunking import Chunk, chunk_document_semantic, chunk_structured_1to1
+from app.tenancy.paths import user_vector_store_path
 
 EMBEDDING_DIM = settings.RAG_EMBEDDING_DIM
 
@@ -201,7 +202,7 @@ class VectorStore:
 
 
 def _resolve_path(index_path: str | None) -> str:
-    return index_path or settings.VECTOR_DB_PATH
+    return index_path or user_vector_store_path()
 
 
 def _upsert_sync(chunks: list[Chunk], index_path: str) -> int:

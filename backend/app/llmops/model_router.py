@@ -36,6 +36,7 @@ from app.llmops.anthropic_client import call_anthropic
 from app.llmops.hermes_client import call_hermes
 from app.llmops.openai_client import call_openai
 from app.llmops.prompt_registry import get_prompt
+from app.tenancy.credentials import resolve_credential
 
 if TYPE_CHECKING:
     from app.harness.loop import AgentRunConfig
@@ -116,16 +117,40 @@ _ROUTING_TABLE: dict[tuple[str, str], ModelTier] = {
 }
 
 
+def _resolve_credential_if_known(env_var: str) -> str | None:
+    """resolve_credential(), tolerant of no tenancy context being set yet.
+
+    A handful of call sites (agent modules building their default
+    AgentRunConfig at *import time*, before any request/job has ever run)
+    call route() with no current user established — get_current_user_id()
+    raising there isn't a real "which user's key" ambiguity, just "we don't
+    know yet," which is equivalent to "no key" for provider auto-detection
+    purposes. Every genuine per-user path (composio_client, openai_client,
+    anthropic_client) calls get_current_user_id() directly and still raises
+    loudly, unaffected by this.
+    """
+    try:
+        return resolve_credential(env_var)
+    except RuntimeError:
+        return None
+
+
 def _hosted_provider() -> ModelProvider:
     """Which hosted provider backs the PRIMARY/CHEAP tiers (WORKER is always Hermes).
 
-    LLM_PROVIDER wins when set explicitly. Otherwise, auto-detect from
-    whichever API key is actually present — ANTHROPIC_API_KEY first (keeps
-    prior behavior unchanged for anyone already relying on the Anthropic
-    default), else OPENAI_API_KEY, so an OpenAI-only setup works without
-    also having to know to set LLM_PROVIDER. Falls back to ANTHROPIC when
-    neither key is set, which reproduces the original "ANTHROPIC_API_KEY is
-    not set" error rather than inventing a new failure mode.
+    LLM_PROVIDER wins when set explicitly — this is deployment-wide tuning
+    config (see plans/peaceful-scribbling-tiger.md), not a per-user secret,
+    so it stays a plain env var. Otherwise, auto-detect from whichever API
+    key the *current user* has saved — ANTHROPIC_API_KEY first (keeps prior
+    behavior unchanged for anyone already relying on the Anthropic default),
+    else OPENAI_API_KEY, so an OpenAI-only setup works without also having to
+    know to set LLM_PROVIDER. Falls back to ANTHROPIC when neither key is
+    set, which reproduces the original "ANTHROPIC_API_KEY is not set" error
+    rather than inventing a new failure mode.
+
+    Reads via resolve_credential(), not os.environ, since OPENAI_API_KEY/
+    ANTHROPIC_API_KEY are per-user credentials (Stage 1) — os.environ is
+    never populated for these anymore.
     """
     explicit = os.environ.get("LLM_PROVIDER")
     if explicit:
@@ -134,9 +159,9 @@ def _hosted_provider() -> ModelProvider:
         except ValueError as exc:
             valid = [p.value for p in ModelProvider]
             raise ValueError(f"Unknown LLM_PROVIDER={explicit!r}. Must be one of: {valid}") from exc
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if _resolve_credential_if_known("ANTHROPIC_API_KEY"):
         return ModelProvider.ANTHROPIC
-    if os.environ.get("OPENAI_API_KEY"):
+    if _resolve_credential_if_known("OPENAI_API_KEY"):
         return ModelProvider.OPENAI
     return ModelProvider.ANTHROPIC
 

@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta, timezone
 from redis.exceptions import WatchError
 
 from app.shared_state import get_client
+from app.tenancy.context import get_current_user_id
 
 
 class RateLimitConfigError(RuntimeError):
@@ -30,7 +31,11 @@ def _cap(env_var: str) -> int:
 
 
 def _key(action: str) -> str:
-    return f"safety:rate:{datetime.now(timezone.utc):%Y-%m-%d}:{action}"
+    # Namespaced per user (the configured cap in env_var still applies as
+    # the same numeric limit to everyone, but each user's usage against it
+    # is counted independently — see plans/peaceful-scribbling-tiger.md
+    # Stage 3) so one user maxing out publish_post never blocks another.
+    return f"safety:rate:{get_current_user_id()}:{datetime.now(timezone.utc):%Y-%m-%d}:{action}"
 
 
 def _ttl() -> int:

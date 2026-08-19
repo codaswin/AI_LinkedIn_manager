@@ -10,6 +10,7 @@ from app.agents.research import ResearchNote, build_run_config, get_poll_interva
 from app.harness.loop import ToolCallRequest
 from app.llmops.prompt_registry import get_prompt, register_prompt
 from app.memory.settings import set_setting
+from app.tenancy import context as tenancy_context
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +19,15 @@ def _ensure_prompt_registered() -> None:
     # registry another test module's reset_for_testing() could have wiped
     # since research.py's module-level registration ran at import time.
     register_prompt("research", research.SYSTEM_PROMPT)
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context() -> None:
+    # get_poll_interval/set_setting go through the now per-user
+    # agent_settings table (see plans/peaceful-scribbling-tiger.md Stage 3).
+    token = tenancy_context.set_current_user_id("research-test-user")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @dataclass

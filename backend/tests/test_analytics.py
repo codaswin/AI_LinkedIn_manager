@@ -21,9 +21,22 @@ from app.harness.loop import AgentRunConfig, ToolCallRequest
 from app.harness.state import AgentState
 from app.llmops.model_router import ModelTier
 from app.llmops.prompt_registry import get_prompt
+from app.tenancy import context as tenancy_context
 from app.tools import registry as registry_module
 
 registry_module._import_all_tools()
+
+# generate_analytics_report.py filters PostEpisode by entity_id ==
+# get_current_user_id() (Stage 2, plans/peaceful-scribbling-tiger.md) —
+# "owner" matches the entity_id used by the real-episode-data test below.
+_USER = "owner"
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id(_USER)
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 @dataclass
@@ -303,3 +316,31 @@ async def test_generate_weekly_digest_aggregates_real_episode_data(db_session) -
     assert digest.total_impressions == 400
     assert digest.avg_engagement_rate == pytest.approx(0.125)
     assert digest.follower_delta == 5
+
+
+@pytest.mark.asyncio
+async def test_generate_weekly_digest_excludes_other_users_posts(db_session) -> None:
+    from app.models.episode import PostEpisode
+
+    db_session.add_all([
+        PostEpisode(
+            entity_id="owner", post_id="post-mine", content="mine",
+            published_at=datetime(2026, 8, 2, tzinfo=timezone.utc),
+            impressions=100, likes=10, comments=5, shares=5, follower_delta=3,
+        ),
+        PostEpisode(
+            entity_id="someone-else", post_id="post-theirs", content="theirs",
+            published_at=datetime(2026, 8, 3, tzinfo=timezone.utc),
+            impressions=99999, likes=999, comments=999, shares=999, follower_delta=999,
+        ),
+    ])
+    await db_session.commit()
+
+    digest = await generate_weekly_digest(
+        db=db_session,
+        llm_client=_fake_llm_client([]),
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 8),
+    )
+    assert digest.total_impressions == 100
+    assert digest.follower_delta == 3

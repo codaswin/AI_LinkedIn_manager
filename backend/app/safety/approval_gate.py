@@ -10,6 +10,7 @@ from typing import Any, Literal
 import structlog
 from app.models.approval_request import ApprovalExecutionAttemptRecord, ApprovalRequestRecord
 from app.safety.kill_switch import is_system_paused
+from app.tenancy.context import get_current_user_id
 from app.tools.execution_context import idempotency_scope
 from app.tools.registry import execute_tool, registry
 from pydantic import BaseModel, ConfigDict
@@ -87,6 +88,7 @@ async def submit_for_approval(
 
     record = ApprovalRequestRecord(
         id=str(uuid.uuid4()),
+        user_id=get_current_user_id(),
         tool_name=tool_name,
         arguments=arguments,
         requested_by_agent=requested_by_agent,
@@ -115,7 +117,9 @@ async def _locked_record(db: AsyncSession, approval_id: str) -> ApprovalRequestR
         select(ApprovalRequestRecord).where(ApprovalRequestRecord.id == approval_id).with_for_update()
     )
     record = result.scalar_one_or_none()
-    if record is None:
+    # A mismatched owner reads identically to "doesn't exist" — never confirms
+    # to a caller that some other user's approval request exists at all.
+    if record is None or record.user_id != get_current_user_id():
         raise ApprovalRequestNotFoundError(f"No approval request with id {approval_id!r}")
     return record
 
@@ -263,7 +267,10 @@ async def reject(db: AsyncSession, approval_id: str, decided_by: str, reason: st
 async def list_actionable(db: AsyncSession) -> list[ApprovalRequest]:
     result = await db.execute(
         select(ApprovalRequestRecord)
-        .where(ApprovalRequestRecord.status.in_(("pending", "executing", "failed")))
+        .where(
+            ApprovalRequestRecord.status.in_(("pending", "executing", "failed")),
+            ApprovalRequestRecord.user_id == get_current_user_id(),
+        )
         .order_by(ApprovalRequestRecord.created_at)
     )
     return [ApprovalRequest.model_validate(record) for record in result.scalars().all()]
@@ -272,7 +279,10 @@ async def list_actionable(db: AsyncSession) -> list[ApprovalRequest]:
 async def list_pending(db: AsyncSession) -> list[ApprovalRequest]:
     result = await db.execute(
         select(ApprovalRequestRecord)
-        .where(ApprovalRequestRecord.status == "pending")
+        .where(
+            ApprovalRequestRecord.status == "pending",
+            ApprovalRequestRecord.user_id == get_current_user_id(),
+        )
         .order_by(ApprovalRequestRecord.created_at)
     )
     return [ApprovalRequest.model_validate(record) for record in result.scalars().all()]

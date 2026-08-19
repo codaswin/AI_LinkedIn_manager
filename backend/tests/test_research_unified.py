@@ -12,6 +12,14 @@ from app.agents.research_sources import (
     research_reddit,
     research_rss,
 )
+from app.tenancy import context as tenancy_context
+
+
+@pytest.fixture(autouse=True)
+def _tenancy_context():
+    token = tenancy_context.set_current_user_id("user-research-unified-test")
+    yield
+    tenancy_context.reset_current_user_id(token)
 
 
 def _fake_execute_tool(tool_name: str):

@@ -29,7 +29,15 @@ function groupPlatforms(platforms: PlatformCredentialStatus[]): [string, Platfor
   return [...knownFirst, ...rest].map((g) => [g, byGroup.get(g)!]);
 }
 
-function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialStatus; onChanged: () => void }) {
+function PlatformCard({
+  platform,
+  onChanged,
+  currentUserId,
+}: {
+  platform: PlatformCredentialStatus;
+  onChanged: () => void;
+  currentUserId: string;
+}) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -86,6 +94,12 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
         {!platform.required && " · optional"}
       </p>
       <p className="card-reason">{platform.summary}</p>
+      {platform.id === "linkedin" && (
+        <p className="connection-help">
+          Your Composio entity ID is <code className="mono-chip">{currentUserId}</code> — use this when creating
+          your LinkedIn connected account in Composio's own dashboard, so it resolves back to your workspace here.
+        </p>
+      )}
       <ErrorBanner message={error} />
 
       <div className="connection-fields">
@@ -125,7 +139,7 @@ function PlatformCard({ platform, onChanged }: { platform: PlatformCredentialSta
   );
 }
 
-export function ConnectionsView() {
+export function ConnectionsView({ currentUserId }: { currentUserId: string }) {
   const [platforms, setPlatforms] = useState<PlatformCredentialStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +179,12 @@ export function ConnectionsView() {
           <h3 className="connection-group-title">{group}</h3>
           <div className="card-list">
             {platformsInGroup.map((platform) => (
-              <PlatformCard platform={platform} onChanged={() => void refresh()} key={platform.id} />
+              <PlatformCard
+                platform={platform}
+                onChanged={() => void refresh()}
+                currentUserId={currentUserId}
+                key={platform.id}
+              />
             ))}
           </div>
         </div>
