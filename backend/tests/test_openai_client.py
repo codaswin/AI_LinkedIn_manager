@@ -77,6 +77,24 @@ async def test_call_openai_forces_the_response_tool(monkeypatch: pytest.MonkeyPa
     ]
 
 
+async def test_response_tool_schema_uses_strict_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression test: without strict=True, OpenAI does best-effort (not
+    # grammar-constrained) JSON generation for tool-call arguments, and a
+    # task that nests a whole JSON object inside the "text" string (e.g.
+    # content_strategist's PostBrief) requires the model to freehand
+    # double-escape quotes — a single dropped backslash desyncs the outer
+    # JSON and was observed causing runaway repetition until
+    # max_completion_tokens was exhausted (production incident). strict
+    # mode requires every property in "required" and additionalProperties
+    # False at every object level — assert both stay set so this can't
+    # silently regress.
+    function_schema = openai_client.RESPONSE_TOOL_SCHEMA["function"]
+    assert function_schema["strict"] is True
+    parameters = function_schema["parameters"]
+    assert parameters["additionalProperties"] is False
+    assert set(parameters["required"]) == set(parameters["properties"])
+
+
 async def test_call_openai_confidence_can_be_null(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     fake_client = SimpleNamespace(

@@ -24,6 +24,23 @@ RESPONSE_TOOL_SCHEMA: dict = {
     "function": {
         "name": RESPONSE_TOOL_NAME,
         "description": "Submit your response to the current task. Call this exactly once, with nothing else.",
+        # strict=True switches OpenAI from best-effort JSON generation to
+        # grammar-constrained decoding: the API guarantees `arguments` is
+        # always syntactically valid JSON matching this schema, token by
+        # token. Without it, a task that asks the model to nest a whole
+        # JSON object inside the "text" string (every agent that wants a
+        # structured reply, e.g. content_strategist's PostBrief) requires
+        # the model to freehand double-escape quotes — one dropped
+        # backslash desyncs the outer JSON, and the smaller/cheaper models
+        # this tier uses have been observed spiraling into runaway
+        # newline-padded repetition trying to recover, burning the whole
+        # max_completion_tokens budget on a single malformed call (see the
+        # "OpenAI tool call arguments were not valid JSON" production
+        # incident this schema addition fixes). strict mode requires every
+        # property listed in "required" (nullable fields stay optional via
+        # a `["type", "null"]` union, as confidence already does) and
+        # "additionalProperties": False on every object level.
+        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
@@ -45,7 +62,8 @@ RESPONSE_TOOL_SCHEMA: dict = {
                     "description": "True if this response fully completes the current task and no further iteration is needed.",
                 },
             },
-            "required": ["text", "goal_achieved"],
+            "required": ["text", "confidence", "goal_achieved"],
+            "additionalProperties": False,
         },
     },
 }
