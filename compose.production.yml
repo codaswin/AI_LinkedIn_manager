@@ -28,6 +28,16 @@ x-backend-environment: &backend-environment
   ANTHROPIC_MODEL_CHEAP: ${ANTHROPIC_MODEL_CHEAP:-claude-haiku-4-5}
   LLM_COST_BUDGET_DAILY_USD: ${LLM_COST_BUDGET_DAILY_USD:-10}
   WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-duckduckgo}
+  # Gated LinkedIn actions hard-refuse to run without these set (see
+  # tools/rate_limit.py's RateLimitConfigError) — a container only ever
+  # sees vars listed here, so omitting a line means unset in the
+  # container even if deploy/production.env defines it. Defaults mirror
+  # .env.example/README's documented caps.
+  LINKEDIN_API_RATE_LIMIT_CONNECTIONS_DAILY: ${LINKEDIN_API_RATE_LIMIT_CONNECTIONS_DAILY:-5}
+  LINKEDIN_API_RATE_LIMIT_REPLIES_DAILY: ${LINKEDIN_API_RATE_LIMIT_REPLIES_DAILY:-20}
+  LINKEDIN_API_RATE_LIMIT_POSTS_DAILY: ${LINKEDIN_API_RATE_LIMIT_POSTS_DAILY:-3}
+  LINKEDIN_API_RATE_LIMIT_DELETES_DAILY: ${LINKEDIN_API_RATE_LIMIT_DELETES_DAILY:-3}
+  LINKEDIN_API_RATE_LIMIT_LIKES_DAILY: ${LINKEDIN_API_RATE_LIMIT_LIKES_DAILY:-20}
 
 x-backend-secrets: &backend-secrets
   - database_url
