@@ -2,12 +2,25 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import Callable, Literal, TypedDict
 
+from app.llmops import anthropic_client, openai_client
 from app.models.platform_credential import PlatformCredentialRecord
 from app.safety.secrets import CredentialEncryptionError, decrypt_secret, encrypt_secret, mask_secret
+from app.tools import composio_client
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Each of these providers caches its SDK client as a process-lifetime
+# singleton the first time it's built (see reset_client_cache in each module)
+# — a save/delete here must invalidate the matching cache, or a corrected key
+# silently keeps failing with the stale one baked into the old client object
+# until the process restarts.
+_CLIENT_CACHE_RESETTERS: dict[str, Callable[[], None]] = {
+    "composio": composio_client.reset_client_cache,
+    "openai": openai_client.reset_client_cache,
+    "anthropic": anthropic_client.reset_client_cache,
+}
 
 CredentialType = Literal["api_key", "token", "oauth_connected_account", "client_credentials", "endpoint"]
 FieldStatus = Literal["not_set", "saved_here", "set_on_server"]
@@ -242,6 +255,9 @@ async def save_platform_credentials(db: AsyncSession, platform_id: str, values: 
         ))
         os.environ[field.env_var] = raw_value
     await db.commit()
+    resetter = _CLIENT_CACHE_RESETTERS.get(platform_id)
+    if resetter is not None:
+        resetter()
 
 
 async def delete_platform_credentials(db: AsyncSession, platform_id: str) -> bool:
@@ -250,6 +266,9 @@ async def delete_platform_credentials(db: AsyncSession, platform_id: str) -> boo
     await db.commit()
     for field in platform.fields:
         os.environ.pop(field.env_var, None)
+    resetter = _CLIENT_CACHE_RESETTERS.get(platform_id)
+    if resetter is not None:
+        resetter()
     return bool(result.rowcount)
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 
 import pytest
+from app.llmops import openai_client
 from app.memory import platform_credentials
 from app.safety import secrets
+from app.tools import composio_client
 from cryptography.fernet import Fernet
 
 
@@ -36,6 +38,21 @@ def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     os.environ.clear()
     os.environ.update(snapshot)
     secrets.reset_for_testing()
+
+
+@pytest.fixture(autouse=True)
+def _clear_provider_client_caches() -> None:
+    """composio_client/openai_client cache their SDK client as a process-lifetime
+
+    singleton (see reset_client_cache in each module) — leaking a cached
+    client across tests would mask the exact regression
+    test_save_invalidates_the_cached_composio_client below exists to catch.
+    """
+    composio_client.reset_client_cache()
+    openai_client.reset_client_cache()
+    yield
+    composio_client.reset_client_cache()
+    openai_client.reset_client_cache()
 
 
 async def test_list_status_shows_everything_unset_by_default(db_session) -> None:
@@ -131,6 +148,35 @@ async def test_load_saved_credentials_into_env_replays_after_env_is_cleared(db_s
     await platform_credentials.load_saved_credentials_into_env(db_session)
 
     assert os.environ["OPENAI_API_KEY"] == "sk-abcd1234"
+
+
+async def test_save_invalidates_the_cached_composio_client(db_session) -> None:
+    # Regression test for a production bug: a user pastes a corrected
+    # COMPOSIO_API_KEY into the Connections UI, save_platform_credentials()
+    # updates os.environ correctly, but the next publish_post still failed
+    # with the OLD key's "Invalid API key" 401 — because
+    # composio_client.get_composio_client() caches the SDK client object
+    # forever once built, and nothing told it to rebuild after a save.
+    await platform_credentials.save_platform_credentials(db_session, "composio", {"api_key": "ck_stale_wrong_key"})
+    stale_client = composio_client.get_composio_client()
+
+    await platform_credentials.save_platform_credentials(db_session, "composio", {"api_key": "ck_corrected_key"})
+
+    fresh_client = composio_client.get_composio_client()
+    assert fresh_client is not stale_client
+    assert os.environ["COMPOSIO_API_KEY"] == "ck_corrected_key"
+
+
+async def test_delete_invalidates_the_cached_composio_client(db_session) -> None:
+    await platform_credentials.save_platform_credentials(db_session, "composio", {"api_key": "ck_to_be_removed"})
+    composio_client.get_composio_client()  # populate the cache
+
+    await platform_credentials.delete_platform_credentials(db_session, "composio")
+
+    # If the cache weren't invalidated, this would silently hand back the
+    # stale client instead of raising for the now-unset env var.
+    with pytest.raises(composio_client.ComposioConfigError):
+        composio_client.get_composio_client()
 
 
 async def test_load_saved_credentials_skips_undecryptable_rows_without_raising(
