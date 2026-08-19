@@ -17,6 +17,16 @@ import type {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8010";
 let csrfToken: string | null = null;
+// /auth/me issues a fresh CSRF token on every call (it doubles as the
+// refresh mechanism after a page reload wipes the module-level csrfToken
+// above). If it's ever called twice concurrently — e.g. React StrictMode's
+// double-invoked mount effect — both calls rotate the token server-side,
+// and whichever response resolves second wins; if responses arrive out of
+// order, the browser can end up holding an already-superseded token, and
+// every write after that fails with "Missing or invalid CSRF token" until
+// the next reload. Sharing one in-flight promise across concurrent callers
+// collapses them into a single rotation, so there's never a race to lose.
+let sessionCheckInFlight: Promise<DashboardSession> | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -59,10 +69,18 @@ export const login = async (username: string, password: string): Promise<Dashboa
   return session;
 };
 
-export const getCurrentSession = async (): Promise<DashboardSession> => {
-  const session = await request<DashboardSession>("/auth/me");
-  csrfToken = session.csrf_token;
-  return session;
+export const getCurrentSession = (): Promise<DashboardSession> => {
+  if (!sessionCheckInFlight) {
+    sessionCheckInFlight = request<DashboardSession>("/auth/me")
+      .then((session) => {
+        csrfToken = session.csrf_token;
+        return session;
+      })
+      .finally(() => {
+        sessionCheckInFlight = null;
+      });
+  }
+  return sessionCheckInFlight;
 };
 
 export const logout = async (): Promise<void> => {
