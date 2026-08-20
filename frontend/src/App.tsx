@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
-import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, Command, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, Users, UserRound, Workflow, X } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, CircleDollarSign, Command, Eye, EyeOff, LockKeyhole, LogOut, Menu, MessageSquareText, Moon, Network, Settings2, ShieldCheck, Sparkles, Sun, Users, UserRound, Workflow, X } from "lucide-react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import "./App.css";
 import { ApiError, getCurrentSession, login, logout } from "./api";
@@ -61,6 +61,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Dashboard
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,7 +88,28 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Dashboard
       <div className="login-heading"><span><LockKeyhole size={19} /></span><div><h1>Dashboard sign in</h1><p>Use your assigned workspace account.</p></div></div>
       {error && <p className="login-error" role="alert">{error}</p>}
       <label className="login-field"><span>Username</span><input autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} /></label>
-      <label className="login-field"><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <label className="login-field">
+        <span>Password</span>
+        <div className="login-password-field">
+          <input
+            type={passwordVisible ? "text" : "password"}
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <button
+            type="button"
+            className="login-password-toggle"
+            onClick={() => setPasswordVisible((visible) => !visible)}
+            aria-label={passwordVisible ? "Hide password" : "Show password"}
+            aria-pressed={passwordVisible}
+            tabIndex={-1}
+          >
+            {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </label>
       <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "Signing in..." : "Sign in"}</button>
     </motion.form>
   </main>;

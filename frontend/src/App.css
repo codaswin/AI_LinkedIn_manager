@@ -1303,6 +1303,10 @@ input[type="text"]:focus,input[type="date"]:focus,input[type="password"]:focus,t
 .login-field { display:flex; flex-direction:column; gap:6px; color:var(--text-h); font-size:.8rem; font-weight:700; }
 .login-field input { width:100%; min-height:42px; padding:9px 11px; color:var(--text-h); border:1px solid var(--border); border-radius:5px; background:var(--surface); font:inherit; font-weight:500; }
 .login-field input:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+.login-password-field { position:relative; display:flex; }
+.login-password-field input { padding-right:38px; }
+.login-password-toggle { position:absolute; top:50%; right:4px; display:grid; width:30px; height:30px; place-items:center; color:var(--text); border-radius:4px; background:transparent; transform:translateY(-50%); }
+.login-password-toggle:hover { color:var(--text-h); background:var(--accent-bg); }
 .login-submit { min-height:42px; border-color:var(--invert-bg); border-radius:6px; color:var(--invert-fg); background:var(--invert-bg); }
 .login-submit:hover:not(:disabled) { border-color:var(--invert-bg-hover); background:var(--invert-bg-hover); }
 .login-error { padding:10px 12px; color:var(--danger); border-left:3px solid var(--danger); background:var(--danger-bg); font-size:.82rem; }
